@@ -1,0 +1,337 @@
+# MCP (Model Context Protocol) CLI Implementation
+
+## 1. Overview
+
+This is an implementation of `mcp` command (mcp2cli) for interacting with MCP servers via CLI.
+
+## 2. Architecture
+
+### 2.1 Layered Structure
+
+```
+CLI Layer (cmd/mcp/main.go)
+    - Argument parsing (0/1/2/3+ param modes)
+    - Output formatting (JSON unified output)
+         │
+Dispatcher Layer (internal/mcp/dispatcher.go)
+    - ListServersConfig()    │ Read-only config, no server connection
+    - ListAllServers()       │ Concurrent connection to get tools
+    - GetServerInfo()        │ Single server info
+    - GetToolInfo()          │ Tool details
+    - FindTool()             │ Cross-server tool search
+    - CallTool()             │ Tool invocation
+         │
+Client Layer (internal/mcp/client.go)
+    - buildTransport()       │ Create transport based on config
+    - listTools()            │ Get tools list
+    - callTool()             │ Call specified tool
+         │
+Transport Layer (go-sdk)
+    - SSEClientTransport     │ Traditional HTTP/SSE
+    - StreamableClientTransport │ Modern streaming HTTP
+    - CommandTransport       │ Local subprocess (stdio)
+```
+
+### 2.2 File Responsibilities
+
+| File | Responsibility |
+|------|----------------|
+| `cmd/mcp/main.go` | cobra command definition, argument routing, output formatting |
+| `internal/mcp/types.go` | Shared structs, error codes, utility functions |
+| `internal/mcp/config.go` | Config file search and loading |
+| `internal/mcp/config_paths.go` | Platform-specific path construction |
+| `internal/mcp/client.go` | Single MCP server client |
+| `internal/mcp/dispatcher.go` | Multi-server dispatch coordination |
+
+## 3. Configuration System
+
+### 3.1 Config File Search Paths
+
+**Linux/macOS (priority high to low):**
+1. `~/.config/modelcontextprotocol/mcp.json`
+2. `~/.config/mcp/config.json`
+3. `./mcp.json` (current directory)
+4. `./.mcp/config.json` (current directory)
+5. `/etc/mcp/config.json` (system-level)
+
+**Windows:**
+1. `%APPDATA%\modelcontextprotocol\mcp.json`
+2. `%APPDATA%\mcp\config.json`
+3. `%USERPROFILE%\.mcp\config.json`
+4. `.\mcp.json`
+5. `.\.mcp\config.json`
+6. `%ProgramData%\mcp\config.json`
+
+### 3.2 Config File Structure
+
+```json
+{
+  "mcpServers": {
+    "serverName": {
+      "transport": "sse|streamable|stdio",
+      "type": "streamable-http",
+      "url": "https://example.com/mcp",
+      "command": "npx",
+      "args": ["-y", "@server/mcp"],
+      "env": {"KEY": "value"},
+      "timeout": 30000
+    }
+  }
+}
+```
+
+**示例配置：**
+
+```json
+{
+  "mcpServers": {
+    "openDeepWiki": {
+      "url": "https://opendeepwiki.k8m.site/mcp/streamable",
+      "timeout": 30000
+    }
+  }
+}
+```
+
+### 3.3 Transport Type Inference
+
+```go
+func InferTransportType(cfg ServerConfig) string {
+    // 1. Explicit transport field
+    if cfg.Transport != "" {
+        return cfg.Transport
+    }
+    // 2. type field alias mapping
+    if cfg.Type != "" {
+        return normalizeTransportType(cfg.Type)
+    }
+    // 3. Has command → stdio
+    if cfg.Command != "" {
+        return "stdio"
+    }
+    // 4. URL contains "sse" (case insensitive)
+    if strings.Contains(strings.ToLower(cfg.URL), "sse") {
+        return "sse"
+    }
+    // 5. URL contains "stream" → streamable
+    if strings.Contains(strings.ToLower(cfg.URL), "stream") {
+        return "streamable"
+    }
+    // 6. Default streamable
+    return "streamable"
+}
+```
+
+### 3.4 Config Merge Strategy
+
+Higher priority paths overwrite lower priority for conflicting server names.
+
+## 4. Core Data Structures
+
+### 4.1 MCPConfig
+
+```go
+type MCPConfig struct {
+    MCPServers map[string]ServerConfig `json:"mcpServers"`
+}
+```
+
+### 4.2 ServerConfig (for config parsing)
+
+```go
+type ServerConfig struct {
+    Transport string            `json:"transport,omitempty"`
+    Type      string            `json:"type,omitempty"`
+    URL       string            `json:"url,omitempty"`
+    Command   string            `json:"command,omitempty"`
+    Args      []string          `json:"args,omitempty"`
+    Env       map[string]string `json:"env,omitempty"`
+    Timeout   int               `json:"timeout,omitempty"`
+}
+```
+
+### 4.3 ServerInfo (for output)
+
+```go
+type ServerInfo struct {
+    Name      string   `json:"name"`
+    Transport string   `json:"transport"`
+    URL       string   `json:"url,omitempty"`
+    Command   string   `json:"command,omitempty"`
+    Tools     []string `json:"tools,omitempty"`
+    Error     string   `json:"error,omitempty"`
+}
+```
+
+### 4.4 ToolInfo
+
+```go
+type ToolInfo struct {
+    Name        string `json:"name"`
+    Description string `json:"description,omitempty"`
+    InputSchema any    `json:"inputSchema,omitempty"`
+}
+```
+
+### 4.5 ToolMatch
+
+```go
+type ToolMatch struct {
+    ServerName string
+    Tool       *ToolInfo
+}
+```
+
+### 4.6 ParamInfo
+
+```go
+type ParamInfo struct {
+    Name        string `json:"name"`
+    Type        string `json:"type"`
+    Required    bool   `json:"required"`
+    Description string `json:"description,omitempty"`
+}
+```
+
+### 4.7 MCPError
+
+```go
+type MCPError struct {
+    Code    string
+    Message string
+    Details map[string]any
+}
+
+const (
+    ErrCodeConfigNotFound  = "MCP_CONFIG_NOT_FOUND"
+    ErrCodeConnectFailed   = "MCP_CONNECT_FAILED"
+    ErrCodeServerNotFound  = "MCP_SERVER_NOT_FOUND"
+    ErrCodeMethodNotFound  = "MCP_METHOD_NOT_FOUND"
+    ErrCodeMethodAmbiguous = "MCP_METHOD_AMBIGUOUS"
+    ErrCodeCallFailed      = "MCP_CALL_FAILED"
+    ErrCodeParamInvalid    = "MCP_PARAM_INVALID"
+)
+```
+
+## 5. CLI Interface
+
+### 5.1 Four Operation Modes
+
+| Args Count | Mode | Handler |
+|------------|------|---------|
+| 0 | list | runMCPList() |
+| 1 | server-info | runMCPServerInfo(serverName) |
+| 2 | tool-info | runMCPInfo(serverName, toolName) |
+| 3+ | call | runMCPCall(serverName, toolName, args...) |
+
+### 5.2 Help Text
+
+```
+Interact with MCP (Model Context Protocol) Servers
+
+Config file search paths (by priority):
+  1. ~/.config/modelcontextprotocol/mcp.json
+  2. ~/.config/mcp/config.json
+  3. ./mcp.json
+  4. ./.mcp/config.json
+  5. /etc/mcp/config.json
+
+Usage examples:
+
+  # List all configured servers (config only, no tool fetching)
+  mcp
+
+  # List tools for a specific server
+  mcp openDeepWiki
+
+  # View details of a specific tool
+  mcp openDeepWiki list_repositories
+
+  # Call a tool (args format: key=value or key:type=value)
+  mcp openDeepWiki list_repositories limit=3
+```
+
+## 6. Operation Details
+
+### 6.1 0-Args Mode (list)
+
+Uses `ListServersConfig()` which only reads config, no server connection.
+
+### 6.2 1-Arg Mode (server-info)
+
+Connects to specified server and fetches tool list.
+
+### 6.3 2-Args Mode (tool-info)
+
+Gets detailed tool info with human-readable formatting:
+- `param_format`: Format description
+- `param_example`: Formatted params like `key:type={value} // description`
+- `call_example`: Full command example
+
+### 6.4 3+ Args Mode (call)
+
+Parses `key=value` or `key:type=value` arguments and calls the tool.
+
+## 7. Unified Output Format
+
+### 7.1 Success Output
+
+```json
+{
+  "success": true,
+  "data": {...},
+  "meta": {
+    "timestamp": "2026-03-23T10:00:00Z",
+    "version": "v0.2.8"
+  }
+}
+```
+
+### 7.2 Error Output
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "MCP_SERVER_NOT_FOUND",
+    "message": "Server 'xxx' not found in config",
+    "details": {...}
+  },
+  "meta": {
+    "timestamp": "2026-03-23T10:00:00Z",
+    "version": "v0.2.8"
+  }
+}
+```
+
+## 8. Transport Types
+
+- `"sse"` - Traditional HTTP/SSE transport
+- `"streamable"` - Modern streaming HTTP transport (default)
+- `"stdio"` - Local subprocess transport
+
+## 9. Key Implementation Details
+
+### 9.1 ParseKVArgs
+
+Supports formats:
+- `key=value` (string type)
+- `key:string=value`
+- `key:number=123`
+- `key:bool=true`
+
+### 9.2 FormatInputSchema
+
+Transforms JSON Schema to human-readable format:
+```
+["repo_id:number={value} // Repository ID", ...]
+```
+
+### 9.3 Type Hints
+
+- `string` → `string`
+- `number` → `number`
+- `integer` → `int`
+- `boolean` → `bool`
+- `array` → `array`
+- `object` → `object`

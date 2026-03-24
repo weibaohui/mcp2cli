@@ -1,3 +1,9 @@
+# Binaries
 lc
 mcp
+bin/
 *.exe
+
+# Coverage
+coverage.out
+coverage.html

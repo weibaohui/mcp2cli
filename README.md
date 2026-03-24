@@ -5,22 +5,43 @@
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat-square&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-## Overview
+## Quick Usage
 
-mcp2cli is a command-line interface for the Model Context Protocol, enabling developers to discover, explore, and invoke tools from any MCP server directly from the terminal.
+```bash
+# Install
+go install github.com/weibaohui/mcp2cli@latest
 
+# List configured servers (no server connection)
+mcp
+
+# Inspect a server's available tools
+mcp openDeepWiki
+
+# View tool details with parameter examples
+mcp openDeepWiki list_repositories
+
+# Call a tool
+mcp openDeepWiki list_repositories limit=3
+
+# Call with typed arguments (recommended)
+mcp openDeepWiki list_repositories limit:number=3 enabled:bool=true
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     mcp2cli                                │
-│                                                             │
-│  ┌─────────┐    ┌─────────┐    ┌─────────┐                │
-│  │  List   │───▶│ Inspect │───▶│  Call   │                │
-│  │ Servers │    │  Tools  │    │  Tools  │                │
-│  └─────────┘    └─────────┘    └─────────┘                │
-│                                                             │
-│         SSE · Streamable HTTP · Stdio                       │
-└─────────────────────────────────────────────────────────────┘
+
+## Argument Format
+
+Arguments can be in two formats:
+
+```bash
+# Simple key=value (string type by default)
+mcp server tool name=John age=30
+
+# Typed key:type=value (recommended for precision)
+mcp server tool name:string=John age:number=30 enabled:bool=true
 ```
+
+**Supported types:** `string`, `number`, `int`, `float`, `bool`
+
+---
 
 ## Features
 
@@ -31,15 +52,27 @@ mcp2cli is a command-line interface for the Model Context Protocol, enabling dev
 - **📁 Smart Config** - Auto-detects and merges configs from standard locations
 - **📤 Unified JSON Output** - Machine-readable output for scripting
 
-## Quick Start
+## Installation
 
-### Installation
+### Binary (latest release)
+
+Download from [GitHub Releases](https://github.com/weibaohui/mcp2cli/releases/latest)
+
+### From source
 
 ```bash
 go install github.com/weibaohui/mcp2cli@latest
 ```
 
-### Configuration
+### Build from source
+
+```bash
+git clone https://github.com/weibaohui/mcp2cli.git
+cd mcp2cli
+make build
+```
+
+## Configuration
 
 Create `~/.config/mcp/config.json`:
 
@@ -54,38 +87,14 @@ Create `~/.config/mcp/config.json`:
 }
 ```
 
-### Usage
+### Config File Search Paths
 
-```bash
-# List all configured servers
-mcp
+| Platform | Priority Order |
+|----------|---------------|
+| macOS/Linux | `~/.config/modelcontextprotocol/mcp.json` → `~/.config/mcp/config.json` → `./mcp.json` → `./.mcp/config.json` → `/etc/mcp/config.json` |
+| Windows | `%APPDATA%\modelcontextprotocol\mcp.json` → `%APPDATA%\mcp\config.json` → `%USERPROFILE%\.mcp\config.json` → `.\mcp.json` → `.\.mcp\config.json` |
 
-# List tools from a specific server
-mcp openDeepWiki
-
-# View tool details
-mcp openDeepWiki list_repositories
-
-# Call a tool with arguments
-mcp openDeepWiki list_repositories limit=3
-```
-
-## Config File Search Paths
-
-mcp2cli searches for configuration in the following locations (priority order):
-
-| Platform | Paths |
-|----------|-------|
-| macOS/Linux | `~/.config/modelcontextprotocol/mcp.json` |
-|  | `~/.config/mcp/config.json` |
-|  | `./mcp.json` |
-|  | `./.mcp/config.json` |
-|  | `/etc/mcp/config.json` |
-| Windows | `%APPDATA%\modelcontextprotocol\mcp.json` |
-|  | `%APPDATA%\mcp\config.json` |
-|  | `%USERPROFILE%\.mcp\config.json` |
-
-## Config File Format
+### Config File Format
 
 ```json
 {
@@ -102,29 +111,32 @@ mcp2cli searches for configuration in the following locations (priority order):
 }
 ```
 
-### Transport Types
-
+**Transport Types:**
 | Type | Description |
 |------|-------------|
 | `streamable` | Modern streaming HTTP (default) |
 | `sse` | Server-Sent Events over HTTP |
 | `stdio` | Local subprocess communication |
 
-### Argument Format
-
-Arguments can be specified in two formats:
+## Command Reference
 
 ```bash
-# String (default)
-mcp server tool name=John
+# List all configured servers
+mcp
 
-# With type annotation
-mcp server tool name:string=John age:number=30 enabled:bool=true
+# Get server info with tools list
+mcp <server_name>
+
+# Get tool details with parameter examples
+mcp <server_name> <tool_name>
+
+# Call a tool with arguments
+mcp <server_name> <tool_name> <key=value> [key2=value2]...
 ```
 
 ## Output Format
 
-All commands return unified JSON output:
+All commands return unified JSON:
 
 ```json
 {
@@ -162,25 +174,19 @@ internal/mcp/
 ## Development
 
 ```bash
-# Clone the repository
-git clone https://github.com/weibaohui/mcp2cli.git
-cd mcp2cli
+# Build for current platform
+make build
 
-# Build
-go build -o mcp ./cmd/mcp/
+# Build for all platforms
+make build-all
 
 # Run tests
-go test ./...
+make test
 
-# Run with custom config
-mcp
+# Lint code
+make lint
 ```
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
-## Related
-
-- [Model Context Protocol Specification](https://modelcontextprotocol.io)
-- [Official Go SDK](https://github.com/modelcontextprotocol/go-sdk)

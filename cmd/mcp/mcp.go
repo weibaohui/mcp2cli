@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/weibaohui/mcp2cli/internal/mcp"
 	mcpSDK "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
+	"github.com/weibaohui/mcp2cli/internal/mcp"
 )
 
 const version = "v0.2.8"

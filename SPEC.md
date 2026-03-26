@@ -74,7 +74,20 @@ Transport Layer (go-sdk)
       "command": "npx",
       "args": ["-y", "@server/mcp"],
       "env": {"KEY": "value"},
-      "timeout": 30000
+      "timeout": 30000,
+      "headers": {
+        "Authorization": "Bearer ${API_TOKEN}",
+        "X-API-Key": "${API_KEY}"
+      },
+      "auth": {
+        "oauth": {
+          "clientId": "my-client-id",
+          "clientSecret": "${OAUTH_CLIENT_SECRET}",
+          "authorizationURL": "https://auth.example.com/authorize",
+          "tokenURL": "https://auth.example.com/token",
+          "scopes": "openid profile"
+        }
+      }
     }
   }
 }
@@ -92,6 +105,88 @@ Transport Layer (go-sdk)
   }
 }
 ```
+
+### 3.3 Authentication
+
+#### 3.3.1 HTTP Headers Authentication
+
+ Supports custom HTTP headers for API key / Bearer token authentication:
+
+```json
+{
+  "mcpServers": {
+    "secure-server": {
+      "url": "https://api.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${API_TOKEN}",
+        "X-API-Key": "${API_KEY}"
+      }
+    }
+  }
+}
+```
+
+**环境变量替换**：支持 `${VAR}` 和 `$VAR` 语法。
+
+#### 3.3.2 OAuth 2.1 + PKCE
+
+OAuth 配置支持以下两种模式：
+
+**1. 静态访问令牌（推荐用于 CLI）**
+```json
+{
+  "mcpServers": {
+    "server-with-token": {
+      "url": "https://api.example.com/mcp",
+      "auth": {
+        "oauth": {
+          "accessToken": "${MY_ACCESS_TOKEN}"
+        }
+      }
+    }
+  }
+}
+```
+
+**2. 完整 OAuth 授权码流程**（需要用户交互）
+```json
+{
+  "mcpServers": {
+    "oauth-server": {
+      "url": "https://api.example.com/mcp",
+      "auth": {
+        "oauth": {
+          "clientId": "my-client-id",
+          "clientSecret": "${OAUTH_CLIENT_SECRET}",
+          "authorizationURL": "https://auth.example.com/authorize",
+          "tokenURL": "https://auth.example.com/token",
+          "scopes": "openid profile"
+        }
+      }
+    }
+  }
+}
+```
+
+#### 3.3.3 Stdio Transport 认证
+
+对于本地 subprocess 传输，使用 `env` 字段传递环境变量：
+
+```json
+{
+  "mcpServers": {
+    "local-server": {
+      "command": "npx",
+      "args": ["-y", "@server/mcp"],
+      "env": {
+        "API_TOKEN": "${API_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+### 3.4 Transport Type Inference
 
 ### 3.3 Transport Type Inference
 
@@ -147,6 +242,21 @@ type ServerConfig struct {
     Args      []string          `json:"args,omitempty"`
     Env       map[string]string `json:"env,omitempty"`
     Timeout   int               `json:"timeout,omitempty"`
+    Headers   map[string]string `json:"headers,omitempty"`
+    Auth      AuthConfig        `json:"auth,omitempty"`
+}
+
+type AuthConfig struct {
+    OAuth *OAuthConfig `json:"oauth,omitempty"`
+}
+
+type OAuthConfig struct {
+    AccessToken      string `json:"accessToken,omitempty"`
+    ClientID         string `json:"clientId,omitempty"`
+    ClientSecret     string `json:"clientSecret,omitempty"`
+    AuthorizationURL string `json:"authorizationURL,omitempty"`
+    TokenURL         string `json:"tokenURL,omitempty"`
+    Scopes           string `json:"scopes,omitempty"`
 }
 ```
 

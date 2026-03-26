@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
 	"os/exec"
+	"regexp"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -108,17 +111,104 @@ func (c *Client) buildTransport() (mcp.Transport, error) {
 		if c.config.URL == "" {
 			return nil, fmt.Errorf("sse transport requires url")
 		}
-		return mcp.NewSSEClientTransport(c.config.URL, nil), nil
+		transport := &mcp.SSEClientTransport{Endpoint: c.config.URL}
+		if headers := c.resolveHeaders(); len(headers) > 0 {
+			transport.HTTPClient = c.newHTTPClientWithHeaders(headers)
+		}
+		return transport, nil
 
 	case TransportStreamable:
 		if c.config.URL == "" {
 			return nil, fmt.Errorf("streamable transport requires url")
 		}
-		return mcp.NewStreamableClientTransport(c.config.URL, nil), nil
+		transport := &mcp.StreamableClientTransport{
+			Endpoint: c.config.URL,
+		}
+		// Get headers from config
+		headers := c.resolveHeaders()
+
+		// Configure OAuth - this handles accessToken and full OAuth config
+		oauthToken, err := configureOAuth(c.config.Auth.OAuth)
+		if err != nil {
+			return nil, err
+		}
+
+		// Add OAuth token to headers if present
+		if oauthToken != "" {
+			if headers == nil {
+				headers = make(map[string]string)
+			}
+			if _, hasAuth := headers["Authorization"]; !hasAuth {
+				headers["Authorization"] = "Bearer " + oauthToken
+			}
+		}
+
+		if len(headers) > 0 {
+			transport.HTTPClient = c.newHTTPClientWithHeaders(headers)
+		}
+		return transport, nil
 
 	default:
 		return nil, fmt.Errorf("unknown transport: %s", c.transport)
 	}
+}
+
+// resolveHeaders resolves environment variables in header values
+// Supports ${VAR} and $VAR syntax
+func (c *Client) resolveHeaders() map[string]string {
+	if c.config.Headers == nil {
+		return nil
+	}
+
+	headers := make(map[string]string)
+	envVarPattern := regexp.MustCompile(`\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
+
+	for key, value := range c.config.Headers {
+		resolved := envVarPattern.ReplaceAllStringFunc(value, func(match string) string {
+			var varName string
+			if len(match) > 2 && match[0] == '$' && match[1] == '{' {
+				// ${VAR} syntax
+				varName = match[2 : len(match)-1]
+			} else if len(match) > 1 && match[0] == '$' {
+				// $VAR syntax
+				varName = match[1:]
+			} else {
+				return match
+			}
+			if envValue, exists := os.LookupEnv(varName); exists {
+				return envValue
+			}
+			return match
+		})
+		headers[key] = resolved
+	}
+
+	return headers
+}
+
+// newHTTPClientWithHeaders creates an HTTP client with custom headers
+func (c *Client) newHTTPClientWithHeaders(headers map[string]string) *http.Client {
+	return &http.Client{
+		Transport: &headerTransport{
+			headers: headers,
+			base:    http.DefaultTransport,
+		},
+	}
+}
+
+// headerTransport is an http.RoundTripper that adds custom headers
+type headerTransport struct {
+	headers map[string]string
+	base    http.RoundTripper
+}
+
+func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Clone the request to avoid modifying the original
+	req = req.Clone(req.Context())
+	for key, value := range t.headers {
+		req.Header.Set(key, value)
+	}
+	return t.base.RoundTrip(req)
 }
 
 // buildEnvList converts env map to slice for exec.Cmd

@@ -105,7 +105,46 @@ Create `~/.config/mcp/config.json`:
       "command": "npx",
       "args": ["-y", "@server/mcp"],
       "env": {"KEY": "value"},
-      "timeout": 30000
+      "timeout": 30000,
+      "headers": {
+        "Authorization": "Bearer ${API_TOKEN}",
+        "X-API-Key": "${API_KEY}"
+      }
+    }
+  }
+}
+```
+
+### Authentication
+
+**HTTP Headers (API Key / Bearer Token):**
+```json
+{
+  "mcpServers": {
+    "secure-server": {
+      "url": "https://api.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${API_TOKEN}",
+        "X-API-Key": "${API_KEY}"
+      }
+    }
+  }
+}
+```
+
+Supports `${VAR}` and `$VAR` environment variable substitution.
+
+**OAuth 2.1 with Static Access Token:**
+```json
+{
+  "mcpServers": {
+    "oauth-server": {
+      "url": "https://api.example.com/mcp",
+      "auth": {
+        "oauth": {
+          "accessToken": "${OAUTH_ACCESS_TOKEN}"
+        }
+      }
     }
   }
 }

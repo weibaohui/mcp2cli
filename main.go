@@ -71,7 +71,7 @@ Examples:
 }
 
 func init() {
-	rootCmd.Flags().BoolVarP(&streamOutput, "stream", "s", false, "Enable streaming output for text results")
+	rootCmd.PersistentFlags().BoolVarP(&streamOutput, "stream", "s", false, "Enable streaming output for text results")
 	rootCmd.AddCommand(interactiveCmd)
 }
 
@@ -173,38 +173,49 @@ func runInteractive(cmd *cobra.Command, args []string) error {
 					fmt.Println("No default server. Use 'use <server>' or 'servers' to list available servers")
 					continue
 				}
-				runMCPServerInfo(ctx, dispatcher, currentServer)
+				if err := runMCPServerInfo(ctx, dispatcher, currentServer); err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				}
 			} else {
 				if currentServer == "" {
 					fmt.Println("No default server. Use 'use <server>' first")
 					continue
 				}
-				runMCPInfo(ctx, dispatcher, currentServer, parts[1])
+				if err := runMCPInfo(ctx, dispatcher, currentServer, parts[1]); err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				}
 			}
 		default:
-			// Assume it's a tool call: server tool args... or just tool args...
+			// Tool call: check if parts[0] is a server, otherwise use currentServer
 			var server, tool string
 			var toolArgs []string
 
-			if len(parts) >= 3 {
-				// server tool args...
-				server = parts[0]
-				tool = parts[1]
-				toolArgs = parts[2:]
-			} else if len(parts) >= 2 {
-				if currentServer == "" {
+			if len(parts) >= 2 {
+				if _, ok := config.MCPServers[parts[0]]; ok {
+					// parts[0] is a server
+					server = parts[0]
+					tool = parts[1]
+					toolArgs = parts[2:]
+				} else if currentServer != "" {
+					// Use currentServer, parts[0] is the tool
+					server = currentServer
+					tool = parts[0]
+					toolArgs = parts[1:]
+				} else {
 					fmt.Println("No default server. Use 'use <server>' or specify server: <server> <tool> [args...]")
 					continue
 				}
+			} else if len(parts) == 1 && currentServer != "" {
 				server = currentServer
-				tool = parts[1]
-				toolArgs = parts[2:]
+				tool = parts[0]
 			} else {
 				fmt.Println("Invalid command. Type 'help' for available commands")
 				continue
 			}
 
-			runMCPCall(ctx, dispatcher, server, tool, toolArgs)
+			if err := runMCPCall(ctx, dispatcher, server, tool, toolArgs); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			}
 		}
 	}
 
@@ -264,23 +275,22 @@ func runMCPList(ctx context.Context, d *mcp.Dispatcher) {
 	})
 }
 
-func runMCPServerInfo(ctx context.Context, d *mcp.Dispatcher, serverName string) {
+func runMCPServerInfo(ctx context.Context, d *mcp.Dispatcher, serverName string) error {
 	info, err := d.GetServerInfo(ctx, serverName)
 	if err != nil {
-		printMCPError(err)
-		os.Exit(1)
+		return err
 	}
 	printMCPSuccess(map[string]any{
 		"configFiles": d.ConfigPaths(),
 		"server":      info,
 	})
+	return nil
 }
 
-func runMCPInfo(ctx context.Context, d *mcp.Dispatcher, serverName, toolName string) {
+func runMCPInfo(ctx context.Context, d *mcp.Dispatcher, serverName, toolName string) error {
 	match, err := d.GetToolInfo(ctx, serverName, toolName)
 	if err != nil {
-		printMCPError(err)
-		os.Exit(1)
+		return err
 	}
 
 	// Format tool information
@@ -313,21 +323,20 @@ func runMCPInfo(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 		"server": match.ServerName,
 		"tool":   toolData,
 	})
+	return nil
 }
 
-func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName string, kvArgs []string) {
+func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName string, kvArgs []string) error {
 	// Parse key=value arguments
 	params, err := mcp.ParseKVArgs(kvArgs)
 	if err != nil {
-		printMCPError(err)
-		os.Exit(1)
+		return err
 	}
 
 	// Call tool
 	actualServer, callResult, err := d.CallTool(ctx, toolName, serverName, params)
 	if err != nil {
-		printMCPError(err)
-		os.Exit(1)
+		return err
 	}
 
 	// Format result - callResult is *mcp.CallToolResult
@@ -335,9 +344,12 @@ func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 
 	if streamOutput {
 		if cr, ok := callResult.(*mcpSDK.CallToolResult); ok {
-			streamTextContent(cr)
+			if streamed, err := streamTextContent(cr); err != nil {
+				return err
+			} else if streamed {
+				return nil
+			}
 		}
-		return
 	}
 
 	printMCPSuccess(map[string]any{
@@ -345,22 +357,33 @@ func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 		"method": toolName,
 		"result": output,
 	})
+	return nil
 }
 
 // streamTextContent outputs text content progressively for streaming mode
-func streamTextContent(result *mcpSDK.CallToolResult) {
-	if result == nil || result.Content == nil {
-		return
+// Returns (streamed, error)
+func streamTextContent(result *mcpSDK.CallToolResult) (bool, error) {
+	if result == nil || len(result.Content) == 0 {
+		return false, nil
 	}
 
 	writer := bufio.NewWriter(os.Stdout)
+	streamed := false
 	for _, item := range result.Content {
 		if tc, ok := item.(*mcpSDK.TextContent); ok && tc.Text != "" {
-			writer.WriteString(tc.Text)
-			writer.WriteByte('\n')
-			writer.Flush()
+			if _, err := writer.WriteString(tc.Text); err != nil {
+				return streamed, err
+			}
+			if err := writer.WriteByte('\n'); err != nil {
+				return streamed, err
+			}
+			if err := writer.Flush(); err != nil {
+				return streamed, err
+			}
+			streamed = true
 		}
 	}
+	return streamed, nil
 }
 
 // formatCallToolResult formats the CallToolResult for JSON output

@@ -146,7 +146,9 @@ func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 	// Call tool
 	actualServer, callResult, err := d.CallTool(ctx, toolName, serverName, params)
 	if err != nil {
-		printMCPError(err)
+		// Enhance error with tool info if available
+		enhancedErr := enhanceToolError(ctx, d, serverName, toolName, err)
+		printMCPError(enhancedErr)
 		os.Exit(1)
 	}
 
@@ -158,6 +160,28 @@ func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 		"method": toolName,
 		"result": output,
 	})
+}
+
+// enhanceToolError adds tool parameter info to error messages
+func enhanceToolError(ctx context.Context, d *mcp.Dispatcher, serverName, toolName string, err error) error {
+	// Try to get tool info to include parameters in error
+	if match, gErr := d.GetToolInfo(ctx, serverName, toolName); gErr == nil {
+		formattedParams := mcp.FormatInputSchema(match.Tool.InputSchema)
+		if formattedParams != nil {
+			// Create a new error with additional context
+			return &mcp.MCPError{
+				Code:    "MCP_CALL_FAILED",
+				Message: err.Error(),
+				Details: map[string]any{
+					"method":        toolName,
+					"server":        serverName,
+					"hint":          "Available parameters:",
+					"param_example": formattedParams,
+				},
+			}
+		}
+	}
+	return err
 }
 
 // formatCallToolResult formats the CallToolResult for JSON output

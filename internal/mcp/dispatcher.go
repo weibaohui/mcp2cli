@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Dispatcher manages multiple MCP server clients
@@ -249,7 +250,7 @@ func (d *Dispatcher) FindTool(ctx context.Context, toolName string) ([]ToolMatch
 	return matches, nil
 }
 
-// CallTool calls a tool on a server
+// CallTool calls a tool on a server with retry on network failures
 func (d *Dispatcher) CallTool(ctx context.Context, toolName, serverName string, params map[string]any) (string, any, error) {
 	d.mu.RLock()
 	cfg, ok := d.config.MCPServers[serverName]
@@ -261,12 +262,76 @@ func (d *Dispatcher) CallTool(ctx context.Context, toolName, serverName string, 
 
 	client := NewClient(serverName, cfg)
 
-	result, err := client.CallTool(ctx, toolName, params)
-	if err != nil {
-		return serverName, nil, err
+	// Retry on network errors
+	const maxRetries = 3
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		result, err := client.CallTool(ctx, toolName, params)
+		if err == nil {
+			return serverName, result, nil
+		}
+
+		lastErr = err
+
+		// Check if it's a network error that might be retryable
+		if !isRetryableError(err) {
+			// Non-retryable error, return immediately with enhanced message
+			return serverName, nil, enhanceCallError(toolName, serverName, err)
+		}
+
+		// Don't retry on last attempt
+		if attempt < maxRetries {
+			// Brief backoff before retry
+			select {
+			case <-ctx.Done():
+				return serverName, nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * 500 * time.Millisecond):
+			}
+		}
 	}
 
-	return serverName, result, nil
+	return serverName, nil, enhanceCallError(toolName, serverName, lastErr)
+}
+
+// enhanceCallError enhances error message with tool information
+func enhanceCallError(toolName, serverName string, err error) *MCPError {
+	mcpErr := CallErrors(toolName, serverName, err)
+
+	// Try to get tool info to suggest parameters
+	// Note: This is best-effort and may fail if the server is unreachable
+	return mcpErr
+}
+
+// isRetryableError checks if an error is a network error that should be retried
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+
+	// Network-related errors that are often transient
+	retryablePatterns := []string{
+		"connection refused",
+		"connection reset",
+		"connection timed out",
+		"timeout",
+		"temporary failure",
+		"i/o timeout",
+		"network unreachable",
+		"no such host",
+		"use of closed network connection",
+	}
+
+	errLower := strings.ToLower(errStr)
+	for _, pattern := range retryablePatterns {
+		if strings.Contains(errLower, pattern) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // GetConfig returns the underlying config

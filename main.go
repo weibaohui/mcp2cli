@@ -165,9 +165,14 @@ func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 
 	if streamOutput {
 		if cr, ok := callResult.(*mcpSDK.CallToolResult); ok {
-			streamTextContent(cr)
+			if streamed, err := streamTextContent(cr); err != nil {
+				printMCPError(err)
+				os.Exit(1)
+			} else if streamed {
+				return
+			}
+			// Fall through to JSON output if no text was streamed
 		}
-		return
 	}
 
 	printMCPSuccess(map[string]any{
@@ -178,19 +183,29 @@ func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 }
 
 // streamTextContent outputs text content progressively for streaming mode
-func streamTextContent(result *mcpSDK.CallToolResult) {
-	if result == nil || result.Content == nil {
-		return
+// Returns (streamed, error)
+func streamTextContent(result *mcpSDK.CallToolResult) (bool, error) {
+	if result == nil || len(result.Content) == 0 {
+		return false, nil
 	}
 
 	writer := bufio.NewWriter(os.Stdout)
+	streamed := false
 	for _, item := range result.Content {
 		if tc, ok := item.(*mcpSDK.TextContent); ok && tc.Text != "" {
-			writer.WriteString(tc.Text)
-			writer.WriteByte('\n')
-			writer.Flush()
+			if _, err := writer.WriteString(tc.Text); err != nil {
+				return streamed, err
+			}
+			if err := writer.WriteByte('\n'); err != nil {
+				return streamed, err
+			}
+			if err := writer.Flush(); err != nil {
+				return streamed, err
+			}
+			streamed = true
 		}
 	}
+	return streamed, nil
 }
 
 // formatCallToolResult formats the CallToolResult for JSON output

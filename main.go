@@ -45,6 +45,24 @@ Usage examples:
 	Run:  runMCP,
 }
 
+var findCmd = &cobra.Command{
+	Use:   "find <query>",
+	Short: "Search for tools across all servers by name or description",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runFind,
+}
+
+var suggestCmd = &cobra.Command{
+	Use:   "suggest <task>",
+	Short: "Suggest tools based on a task description",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runSuggest,
+}
+
+func init() {
+	rootCmd.AddCommand(findCmd, suggestCmd)
+}
+
 func main() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -74,6 +92,89 @@ func runMCP(cmd *cobra.Command, args []string) {
 	default:
 		runMCPCall(ctx, dispatcher, args[0], args[1], args[2:])
 	}
+}
+
+func runFind(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	config, loadedPaths, err := mcp.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	dispatcher := mcp.NewDispatcher(config, loadedPaths)
+	query := strings.ToLower(args[0])
+
+	// Search all servers for matching tools
+	matches := dispatcher.SearchTools(ctx, query)
+
+	if len(matches) == 0 {
+		printMCPSuccess(map[string]any{
+			"configFiles": loadedPaths,
+			"query":       query,
+			"matches":     []map[string]any{},
+			"message":     "No tools found matching your search",
+		})
+		return nil
+	}
+
+	var results []map[string]any
+	for _, match := range matches {
+		results = append(results, map[string]any{
+			"server":     match.ServerName,
+			"name":       match.Tool.Name,
+			"description": match.Tool.Description,
+		})
+	}
+
+	printMCPSuccess(map[string]any{
+		"configFiles": loadedPaths,
+		"query":       query,
+		"matches":     results,
+	})
+	return nil
+}
+
+func runSuggest(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	config, loadedPaths, err := mcp.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	dispatcher := mcp.NewDispatcher(config, loadedPaths)
+	task := strings.ToLower(args[0])
+
+	// Get suggestions based on keywords
+	suggestions := dispatcher.SuggestTools(ctx, task)
+
+	if len(suggestions) == 0 {
+		printMCPSuccess(map[string]any{
+			"configFiles": loadedPaths,
+			"task":        task,
+			"suggestions": []map[string]any{},
+			"message":     "No tools found for this task",
+		})
+		return nil
+	}
+
+	var results []map[string]any
+	for _, s := range suggestions {
+		results = append(results, map[string]any{
+			"server":     s.ServerName,
+			"name":       s.Tool.Name,
+			"description": s.Tool.Description,
+			"reason":     s.Reason,
+		})
+	}
+
+	printMCPSuccess(map[string]any{
+		"configFiles": loadedPaths,
+		"task":        task,
+		"suggestions": results,
+	})
+	return nil
 }
 
 func runMCPList(ctx context.Context, d *mcp.Dispatcher) {

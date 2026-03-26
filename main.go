@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	mcpSDK "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -15,6 +18,8 @@ import (
 )
 
 const version = "v0.2.8"
+
+var streamOutput bool
 
 var rootCmd = &cobra.Command{
 	Use:   "mcp",
@@ -43,6 +48,31 @@ Usage examples:
   mcp openDeepWiki list_repositories limit=3`,
 	Args: cobra.ArbitraryArgs,
 	Run:  runMCP,
+}
+
+var interactiveCmd = &cobra.Command{
+	Use:   "interactive",
+	Short: "Start interactive REPL mode",
+	Long: `Start an interactive REPL for calling MCP tools.
+
+Commands:
+  server tool [args...]  Call a tool
+  servers               List available servers
+  use <server>          Set default server
+  tool [name]           List tools or show tool details
+  help                  Show this help
+  exit                  Exit interactive mode
+
+Examples:
+  mcp> openDeepWiki list_repositories limit=3
+  mcp> use openDeepWiki
+  mcp> list_repositories limit=5`,
+	RunE: runInteractive,
+}
+
+func init() {
+	rootCmd.Flags().BoolVarP(&streamOutput, "stream", "s", false, "Enable streaming output for text results")
+	rootCmd.AddCommand(interactiveCmd)
 }
 
 func main() {
@@ -74,6 +104,156 @@ func runMCP(cmd *cobra.Command, args []string) {
 	default:
 		runMCPCall(ctx, dispatcher, args[0], args[1], args[2:])
 	}
+}
+
+func runInteractive(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+
+	// Load config
+	config, loadedPaths, err := mcp.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	dispatcher := mcp.NewDispatcher(config, loadedPaths)
+	currentServer := ""
+
+	// Set up signal handling for graceful exit
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("MCP Interactive Mode")
+	fmt.Println("Type 'help' for available commands, 'exit' to quit")
+	fmt.Println()
+
+	for {
+		fmt.Print("mcp> ")
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			break
+		}
+
+		input = strings.TrimSpace(input)
+		if input == "" {
+			continue
+		}
+
+		// Handle signals
+		select {
+		case sig := <-sigChan:
+			fmt.Printf("\nReceived signal %v, exiting...\n", sig)
+			return nil
+		default:
+		}
+
+		parts := parseInput(input)
+		if len(parts) == 0 {
+			continue
+		}
+
+		switch parts[0] {
+		case "exit", "quit", "q":
+			fmt.Println("Goodbye!")
+			return nil
+		case "help", "?":
+			printInteractiveHelp()
+		case "servers", "list":
+			runMCPList(ctx, dispatcher)
+		case "use":
+			if len(parts) < 2 {
+				fmt.Println("Usage: use <server>")
+				continue
+			}
+			currentServer = parts[1]
+			fmt.Printf("Default server set to: %s\n", currentServer)
+		case "tool", "tools":
+			if len(parts) < 2 {
+				if currentServer == "" {
+					fmt.Println("No default server. Use 'use <server>' or 'servers' to list available servers")
+					continue
+				}
+				runMCPServerInfo(ctx, dispatcher, currentServer)
+			} else {
+				if currentServer == "" {
+					fmt.Println("No default server. Use 'use <server>' first")
+					continue
+				}
+				runMCPInfo(ctx, dispatcher, currentServer, parts[1])
+			}
+		default:
+			// Assume it's a tool call: server tool args... or just tool args...
+			var server, tool string
+			var toolArgs []string
+
+			if len(parts) >= 3 {
+				// server tool args...
+				server = parts[0]
+				tool = parts[1]
+				toolArgs = parts[2:]
+			} else if len(parts) >= 2 {
+				if currentServer == "" {
+					fmt.Println("No default server. Use 'use <server>' or specify server: <server> <tool> [args...]")
+					continue
+				}
+				server = currentServer
+				tool = parts[1]
+				toolArgs = parts[2:]
+			} else {
+				fmt.Println("Invalid command. Type 'help' for available commands")
+				continue
+			}
+
+			runMCPCall(ctx, dispatcher, server, tool, toolArgs)
+		}
+	}
+
+	return nil
+}
+
+func parseInput(input string) []string {
+	var parts []string
+	var current strings.Builder
+	inQuote := false
+
+	for _, ch := range input {
+		switch ch {
+		case '"':
+			inQuote = !inQuote
+		case ' ':
+			if !inQuote {
+				if current.Len() > 0 {
+					parts = append(parts, current.String())
+					current.Reset()
+				}
+				continue
+			}
+		}
+		current.WriteRune(ch)
+	}
+
+	if current.Len() > 0 {
+		parts = append(parts, current.String())
+	}
+
+	return parts
+}
+
+func printInteractiveHelp() {
+	fmt.Println(`Available commands:
+  server tool [args...]  Call a tool on a specific server
+  use <server>          Set default server for short commands
+  servers               List all configured servers
+  tool [name]           List tools on default server or show tool details
+  help                  Show this help
+  exit                  Exit interactive mode
+
+Shortcut: If no server prefix, uses the default server (set with 'use')
+
+Examples:
+  openDeepWiki list_repositories limit=3
+  use openDeepWiki
+  list_repositories limit=5`)
 }
 
 func runMCPList(ctx context.Context, d *mcp.Dispatcher) {
@@ -153,11 +333,34 @@ func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 	// Format result - callResult is *mcp.CallToolResult
 	output := formatCallToolResult(callResult)
 
+	if streamOutput {
+		if cr, ok := callResult.(*mcpSDK.CallToolResult); ok {
+			streamTextContent(cr)
+		}
+		return
+	}
+
 	printMCPSuccess(map[string]any{
 		"server": actualServer,
 		"method": toolName,
 		"result": output,
 	})
+}
+
+// streamTextContent outputs text content progressively for streaming mode
+func streamTextContent(result *mcpSDK.CallToolResult) {
+	if result == nil || result.Content == nil {
+		return
+	}
+
+	writer := bufio.NewWriter(os.Stdout)
+	for _, item := range result.Content {
+		if tc, ok := item.(*mcpSDK.TextContent); ok && tc.Text != "" {
+			writer.WriteString(tc.Text)
+			writer.WriteByte('\n')
+			writer.Flush()
+		}
+	}
 }
 
 // formatCallToolResult formats the CallToolResult for JSON output

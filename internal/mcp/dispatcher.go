@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 )
@@ -272,4 +273,124 @@ func (d *Dispatcher) CallTool(ctx context.Context, toolName, serverName string, 
 // GetConfig returns the underlying config
 func (d *Dispatcher) GetConfig() *MCPConfig {
 	return d.config
+}
+
+// SuggestMatch represents a suggested tool with reasoning
+type SuggestMatch struct {
+	ServerName string
+	Tool       *ToolInfo
+	Reason     string
+}
+
+// SearchTools searches for tools across all servers by name or description
+func (d *Dispatcher) SearchTools(ctx context.Context, query string) []ToolMatch {
+	d.mu.RLock()
+	serversConfig := make(map[string]ServerConfig)
+	for name, cfg := range d.config.MCPServers {
+		serversConfig[name] = cfg
+	}
+	d.mu.RUnlock()
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var matches []ToolMatch
+
+	for name, cfg := range serversConfig {
+		wg.Add(1)
+		go func(name string, cfg ServerConfig) {
+			defer wg.Done()
+
+			client := NewClient(name, cfg)
+			tools, err := client.ListTools(ctx)
+			if err != nil {
+				return
+			}
+
+			mu.Lock()
+			for _, t := range tools {
+				toolNameLower := strings.ToLower(t.Name)
+				descLower := strings.ToLower(t.Description)
+
+				// Match if query appears in name or description
+				if strings.Contains(toolNameLower, query) || strings.Contains(descLower, query) {
+					matches = append(matches, ToolMatch{
+						ServerName: name,
+						Tool: &ToolInfo{
+							Name:        t.Name,
+							Description: t.Description,
+							InputSchema: t.InputSchema,
+						},
+					})
+				}
+			}
+			mu.Unlock()
+		}(name, cfg)
+	}
+
+	wg.Wait()
+	return matches
+}
+
+// SuggestTools suggests tools based on a task description using keyword matching
+func (d *Dispatcher) SuggestTools(ctx context.Context, task string) []SuggestMatch {
+	d.mu.RLock()
+	serversConfig := make(map[string]ServerConfig)
+	for name, cfg := range d.config.MCPServers {
+		serversConfig[name] = cfg
+	}
+	d.mu.RUnlock()
+
+	// Extract keywords from task
+	taskLower := strings.ToLower(task)
+	taskWords := strings.Fields(taskLower)
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var suggestions []SuggestMatch
+
+	for name, cfg := range serversConfig {
+		wg.Add(1)
+		go func(name string, cfg ServerConfig) {
+			defer wg.Done()
+
+			client := NewClient(name, cfg)
+			tools, err := client.ListTools(ctx)
+			if err != nil {
+				return
+			}
+
+			mu.Lock()
+			for _, t := range tools {
+				toolNameLower := strings.ToLower(t.Name)
+				descLower := strings.ToLower(t.Description)
+
+				// Check for keyword matches
+				var matchedWords []string
+				for _, word := range taskWords {
+					if len(word) < 3 {
+						continue // Skip short words
+					}
+					if strings.Contains(toolNameLower, word) || strings.Contains(descLower, word) {
+						matchedWords = append(matchedWords, word)
+					}
+				}
+
+				if len(matchedWords) > 0 {
+					suggestions = append(suggestions, SuggestMatch{
+						ServerName: name,
+						Tool: &ToolInfo{
+							Name:        t.Name,
+							Description: t.Description,
+							InputSchema: t.InputSchema,
+						},
+						Reason: fmt.Sprintf("Matched keywords: %s", strings.Join(matchedWords, ", ")),
+					})
+				}
+			}
+			mu.Unlock()
+		}(name, cfg)
+	}
+
+	wg.Wait()
+	return suggestions
 }

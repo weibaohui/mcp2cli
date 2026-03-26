@@ -1,6 +1,9 @@
 package mcp
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +15,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // configureOAuth checks the OAuth config and sets up authentication accordingly.
@@ -74,17 +78,9 @@ func performOAuthFlow(config *OAuthConfig) (string, error) {
 	codeChallenge := generateCodeChallenge(codeVerifier)
 	state := generateState(16)
 
-	// Build authorization URL
-	authURL := buildAuthURL(config, state, codeChallenge)
-
 	// Create callback channel
 	codeChan := make(chan string)
 	errChan := make(chan error)
-
-	redirectURL := config.RedirectURL
-	if redirectURL == "" {
-		redirectURL = "http://localhost:7777/callback"
-	}
 
 	// Start local server to receive callback
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -109,8 +105,11 @@ func performOAuthFlow(config *OAuthConfig) (string, error) {
 	}))
 	defer server.Close()
 
-	// Update redirect URL to use the test server's URL
+	// Use the actual server URL as redirect_uri
 	callbackURL := server.URL + "/callback"
+
+	// Build authorization URL with actual callback URL
+	authURL := buildAuthURL(config, state, codeChallenge, callbackURL)
 
 	// Open browser for authorization
 	fmt.Printf("Opening browser for OAuth authorization...\n")
@@ -119,17 +118,19 @@ func performOAuthFlow(config *OAuthConfig) (string, error) {
 		return "", fmt.Errorf("failed to open browser: %w", err)
 	}
 
-	// Wait for callback
+	// Wait for callback with 5 minute timeout
 	select {
 	case code := <-codeChan:
 		return exchangeCode(config, code, codeVerifier, callbackURL)
 	case err := <-errChan:
 		return "", fmt.Errorf("oauth callback error: %w", err)
+	case <-time.After(5 * time.Minute):
+		return "", fmt.Errorf("oauth authorization timed out after 5 minutes")
 	}
 }
 
 // buildAuthURL builds the OAuth authorization URL with PKCE.
-func buildAuthURL(config *OAuthConfig, state, codeChallenge string) string {
+func buildAuthURL(config *OAuthConfig, state, codeChallenge, redirectURL string) string {
 	scopes := resolveEnvVar(config.Scopes)
 	if scopes == "" {
 		scopes = "openid profile"
@@ -138,7 +139,7 @@ func buildAuthURL(config *OAuthConfig, state, codeChallenge string) string {
 	params := url.Values{}
 	params.Set("response_type", "code")
 	params.Set("client_id", resolveEnvVar(config.ClientID))
-	params.Set("redirect_uri", resolveEnvVar(config.RedirectURL))
+	params.Set("redirect_uri", redirectURL)
 	params.Set("scope", scopes)
 	params.Set("state", state)
 	params.Set("code_challenge", codeChallenge)
@@ -169,7 +170,7 @@ func exchangeCode(config *OAuthConfig, code, codeVerifier, redirectURI string) (
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	client := &http.Client{Timeout: 30 * 60} // 30 second timeout for OAuth
+	client := &http.Client{Timeout: 30 * time.Second} // 30 second timeout for OAuth
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("token request failed: %w", err)
@@ -204,14 +205,13 @@ func exchangeCode(config *OAuthConfig, code, codeVerifier, redirectURI string) (
 	return tokenResp.AccessToken, nil
 }
 
-// generateCodeVerifier generates a PKCE code verifier.
+// generateCodeVerifier generates a PKCE code verifier using crypto/rand.
 func generateCodeVerifier(length int) string {
-	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = chars[i%len(chars)]
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		panic("failed to generate random bytes: " + err.Error())
 	}
-	return string(result)
+	return base64.RawURLEncoding.EncodeToString(bytes)
 }
 
 // generateCodeChallenge generates a PKCE code challenge from a verifier using S256.
@@ -220,45 +220,22 @@ func generateCodeChallenge(verifier string) string {
 	return base64URLEncode(h)
 }
 
-// generateState generates a random state parameter.
+// generateState generates a random state parameter using crypto/rand.
 func generateState(length int) string {
-	result := make([]byte, length)
-	for i := range result {
-		result[i] = byte(i * 17 % 256)
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		panic("failed to generate random state: " + err.Error())
 	}
-	return base64URLEncode(result)
+	return base64.RawURLEncoding.EncodeToString(bytes)
 }
 
 func sha256Hash(data []byte) []byte {
-	h := make([]byte, 32)
-	for i := range h {
-		h[i] = byte(len(data)*i + i)
-	}
-	return h
+	hash := sha256.Sum256(data)
+	return hash[:]
 }
 
 func base64URLEncode(data []byte) string {
-	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-	result := make([]byte, (len(data)+2)/3*4)
-	for i := 0; i < len(data); i += 3 {
-		var n uint32
-		n |= uint32(data[i]) << 16
-		if i+1 < len(data) {
-			n |= uint32(data[i+1]) << 8
-		}
-		if i+2 < len(data) {
-			n |= uint32(data[i+2])
-		}
-		result[i/3*4] = chars[(n>>18)&0x3F]
-		result[i/3*4+1] = chars[(n>>12)&0x3F]
-		if i+1 < len(data) {
-			result[i/3*4+2] = chars[(n>>6)&0x3F]
-		}
-		if i+2 < len(data) {
-			result[i/3*4+3] = chars[n&0x3F]
-		}
-	}
-	return string(result)
+	return base64.RawURLEncoding.EncodeToString(data)
 }
 
 // openBrowser opens the URL in the default browser.

@@ -16,6 +16,8 @@ import (
 
 const version = "v0.2.8"
 
+var debugMode bool
+
 var rootCmd = &cobra.Command{
 	Use:   "mcp",
 	Short: "Interact with MCP (Model Context Protocol) Servers",
@@ -43,6 +45,10 @@ Usage examples:
   mcp openDeepWiki list_repositories limit=3`,
 	Args: cobra.ArbitraryArgs,
 	Run:  runMCP,
+}
+
+func init() {
+	rootCmd.PersistentFlags().BoolVarP(&debugMode, "debug", "d", false, "Enable debug output with request/response details")
 }
 
 func main() {
@@ -143,9 +149,17 @@ func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 		os.Exit(1)
 	}
 
+	if debugMode {
+		debugf("Calling tool: %s on server: %s", toolName, serverName)
+		debugf("Parameters: %s", mustMarshalJSON(params))
+	}
+
 	// Call tool
 	actualServer, callResult, err := d.CallTool(ctx, toolName, serverName, params)
 	if err != nil {
+		if debugMode {
+			debugf("Error: %v", err)
+		}
 		printMCPError(err)
 		os.Exit(1)
 	}
@@ -153,11 +167,29 @@ func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 	// Format result - callResult is *mcp.CallToolResult
 	output := formatCallToolResult(callResult)
 
+	if debugMode {
+		debugf("Raw result: %s", mustMarshalJSON(callResult))
+	}
+
 	printMCPSuccess(map[string]any{
 		"server": actualServer,
 		"method": toolName,
 		"result": output,
 	})
+}
+
+// debugf prints debug output to stderr
+func debugf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
+}
+
+// mustMarshalJSON marshals v to JSON, panics on error
+func mustMarshalJSON(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprintf("<json error: %v>", err)
+	}
+	return string(b)
 }
 
 // formatCallToolResult formats the CallToolResult for JSON output

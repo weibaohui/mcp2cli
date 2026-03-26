@@ -15,6 +15,35 @@ type ServerConfig struct {
 	Args      []string          `json:"args,omitempty"`
 	Env       map[string]string `json:"env,omitempty"`
 	Timeout   int               `json:"timeout,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Auth      AuthConfig        `json:"auth,omitempty"`
+}
+
+// AuthConfig represents authentication configuration for MCP servers
+type AuthConfig struct {
+	// OAuth 2.1 + PKCE configuration
+	OAuth *OAuthConfig `json:"oauth,omitempty"`
+}
+
+// OAuthConfig holds OAuth 2.1 authentication parameters
+type OAuthConfig struct {
+	// AccessToken is a static access token to use for authentication.
+	// If provided, it will be used directly as a Bearer token.
+	AccessToken string `json:"accessToken,omitempty"`
+	// ClientID is the OAuth client ID (for full OAuth flow).
+	ClientID string `json:"clientId,omitempty"`
+	// ClientSecret is the OAuth client secret (for confidential clients).
+	ClientSecret string `json:"clientSecret,omitempty"`
+	// AuthorizationURL is the authorization server's authorization endpoint.
+	AuthorizationURL string `json:"authorizationURL,omitempty"`
+	// TokenURL is the authorization server's token endpoint.
+	TokenURL string `json:"tokenURL,omitempty"`
+	// Scopes are the OAuth scopes to request.
+	Scopes string `json:"scopes,omitempty"`
+	// RedirectURL is the callback URL for OAuth (defaults to http://localhost:7777/callback).
+	RedirectURL string `json:"redirectURL,omitempty"`
+	// ClientIDMetadataURL is the URL for Client ID Metadata Document (MCP spec).
+	ClientIDMetadataURL string `json:"clientIdMetadataUrl,omitempty"`
 }
 
 // MCPConfig represents the full MCP configuration

@@ -404,3 +404,219 @@ func containsHelper(s, substr string) bool {
 	}
 	return false
 }
+
+// Authentication tests
+
+func TestLoadConfig_withHeaders(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := `{
+		"mcpServers": {
+			"server-with-auth": {
+				"url": "https://example.com/mcp",
+				"headers": {
+					"Authorization": "Bearer secret-token",
+					"X-API-Key": "api-key-123"
+				}
+			}
+		}
+	}`
+	configPath := filepath.Join(tmpDir, "config.json")
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	cfg, _, err := LoadConfigFromPaths([]string{configPath})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	server, ok := cfg.MCPServers["server-with-auth"]
+	if !ok {
+		t.Fatal("expected server-with-auth to be present")
+	}
+
+	if server.Headers == nil {
+		t.Fatal("expected headers to be present")
+	}
+
+	if server.Headers["Authorization"] != "Bearer secret-token" {
+		t.Errorf("expected 'Bearer secret-token', got %q", server.Headers["Authorization"])
+	}
+
+	if server.Headers["X-API-Key"] != "api-key-123" {
+		t.Errorf("expected 'api-key-123', got %q", server.Headers["X-API-Key"])
+	}
+}
+
+func TestLoadConfig_withOAuthConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := `{
+		"mcpServers": {
+			"server-with-oauth": {
+				"url": "https://example.com/mcp",
+				"auth": {
+					"oauth": {
+						"clientId": "my-client-id",
+						"clientSecret": "my-client-secret",
+						"authorizationURL": "https://auth.example.com/authorize",
+						"tokenURL": "https://auth.example.com/token",
+						"scopes": "openid profile"
+					}
+				}
+			}
+		}
+	}`
+	configPath := filepath.Join(tmpDir, "config.json")
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+
+	cfg, _, err := LoadConfigFromPaths([]string{configPath})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	server, ok := cfg.MCPServers["server-with-oauth"]
+	if !ok {
+		t.Fatal("expected server-with-oauth to be present")
+	}
+
+	if server.Auth.OAuth == nil {
+		t.Fatal("expected oauth config to be present")
+	}
+
+	if server.Auth.OAuth.ClientID != "my-client-id" {
+		t.Errorf("expected 'my-client-id', got %q", server.Auth.OAuth.ClientID)
+	}
+
+	if server.Auth.OAuth.AuthorizationURL != "https://auth.example.com/authorize" {
+		t.Errorf("unexpected authorization URL: %s", server.Auth.OAuth.AuthorizationURL)
+	}
+}
+
+func TestResolveHeaders_envVarSubstitution(t *testing.T) {
+	// Set test environment variable
+	os.Setenv("TEST_API_TOKEN", "my-secret-token")
+	defer os.Unsetenv("TEST_API_TOKEN")
+
+	client := NewClient("test", ServerConfig{
+		URL: "https://example.com/mcp",
+		Headers: map[string]string{
+			"Authorization":   "Bearer ${TEST_API_TOKEN}",
+			"X-Custom-Header": "static-value",
+		},
+	})
+
+	headers := client.resolveHeaders()
+
+	if headers["Authorization"] != "Bearer my-secret-token" {
+		t.Errorf("expected 'Bearer my-secret-token', got %q", headers["Authorization"])
+	}
+
+	if headers["X-Custom-Header"] != "static-value" {
+		t.Errorf("expected 'static-value', got %q", headers["X-Custom-Header"])
+	}
+}
+
+func TestResolveHeaders_dollarVarSyntax(t *testing.T) {
+	os.Setenv("MY_TOKEN", "token-value")
+	defer os.Unsetenv("MY_TOKEN")
+
+	client := NewClient("test", ServerConfig{
+		URL: "https://example.com/mcp",
+		Headers: map[string]string{
+			"Authorization": "Bearer $MY_TOKEN",
+		},
+	})
+
+	headers := client.resolveHeaders()
+
+	if headers["Authorization"] != "Bearer token-value" {
+		t.Errorf("expected 'Bearer token-value', got %q", headers["Authorization"])
+	}
+}
+
+func TestResolveHeaders_unsetVar(t *testing.T) {
+	// Ensure the env var is not set
+	os.Unsetenv("NONEXISTENT_VAR")
+
+	client := NewClient("test", ServerConfig{
+		URL: "https://example.com/mcp",
+		Headers: map[string]string{
+			"Authorization": "Bearer ${NONEXISTENT_VAR}",
+		},
+	})
+
+	headers := client.resolveHeaders()
+
+	// Should keep the original placeholder when env var is not set
+	if headers["Authorization"] != "Bearer ${NONEXISTENT_VAR}" {
+		t.Errorf("expected unchanged placeholder, got %q", headers["Authorization"])
+	}
+}
+
+func TestResolveHeaders_nilHeaders(t *testing.T) {
+	client := NewClient("test", ServerConfig{
+		URL: "https://example.com/mcp",
+	})
+
+	headers := client.resolveHeaders()
+
+	if headers != nil {
+		t.Errorf("expected nil headers, got %v", headers)
+	}
+}
+
+func TestResolveOAuthToken_withToken(t *testing.T) {
+	os.Setenv("OAUTH_TOKEN", "my-oauth-token")
+	defer os.Unsetenv("OAUTH_TOKEN")
+
+	client := NewClient("test", ServerConfig{
+		URL: "https://example.com/mcp",
+		Auth: AuthConfig{
+			OAuth: &OAuthConfig{
+				AccessToken: "${OAUTH_TOKEN}",
+			},
+		},
+	})
+
+	token, err := configureOAuth(client.config.Auth.OAuth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if token != "my-oauth-token" {
+		t.Errorf("expected 'my-oauth-token', got %q", token)
+	}
+}
+
+func TestConfigureOAuth_withoutAuth(t *testing.T) {
+	client := NewClient("test", ServerConfig{
+		URL: "https://example.com/mcp",
+	})
+
+	token, err := configureOAuth(client.config.Auth.OAuth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if token != "" {
+		t.Errorf("expected empty token, got %q", token)
+	}
+}
+
+func TestConfigureOAuth_withoutOAuth(t *testing.T) {
+	client := NewClient("test", ServerConfig{
+		URL: "https://example.com/mcp",
+		Auth: AuthConfig{},
+	})
+
+	token, err := configureOAuth(client.config.Auth.OAuth)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if token != "" {
+		t.Errorf("expected empty token, got %q", token)
+	}
+}

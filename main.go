@@ -45,7 +45,10 @@ Usage examples:
   mcp openDeepWiki list_repositories
 
   # Call a tool (args format: key=value or key:type=value)
-  mcp openDeepWiki list_repositories limit=3`,
+  mcp openDeepWiki list_repositories limit=3
+
+  # Call a tool with streaming output
+  mcp --stream openDeepWiki list_repositories limit=3`,
 	Args: cobra.ArbitraryArgs,
 	Run:  runMCP,
 }

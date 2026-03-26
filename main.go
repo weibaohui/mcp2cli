@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,8 @@ import (
 )
 
 const version = "v0.2.8"
+
+var streamOutput bool
 
 var rootCmd = &cobra.Command{
 	Use:   "mcp",
@@ -40,9 +43,16 @@ Usage examples:
   mcp openDeepWiki list_repositories
 
   # Call a tool (args format: key=value or key:type=value)
-  mcp openDeepWiki list_repositories limit=3`,
+  mcp openDeepWiki list_repositories limit=3
+
+  # Call a tool with streaming output
+  mcp --stream openDeepWiki list_repositories limit=3`,
 	Args: cobra.ArbitraryArgs,
 	Run:  runMCP,
+}
+
+func init() {
+	rootCmd.Flags().BoolVarP(&streamOutput, "stream", "s", false, "Enable streaming output for text results")
 }
 
 func main() {
@@ -153,11 +163,49 @@ func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 	// Format result - callResult is *mcp.CallToolResult
 	output := formatCallToolResult(callResult)
 
+	if streamOutput {
+		if cr, ok := callResult.(*mcpSDK.CallToolResult); ok {
+			if streamed, err := streamTextContent(cr); err != nil {
+				printMCPError(err)
+				os.Exit(1)
+			} else if streamed {
+				return
+			}
+			// Fall through to JSON output if no text was streamed
+		}
+	}
+
 	printMCPSuccess(map[string]any{
 		"server": actualServer,
 		"method": toolName,
 		"result": output,
 	})
+}
+
+// streamTextContent outputs text content progressively for streaming mode
+// Returns (streamed, error)
+func streamTextContent(result *mcpSDK.CallToolResult) (bool, error) {
+	if result == nil || len(result.Content) == 0 {
+		return false, nil
+	}
+
+	writer := bufio.NewWriter(os.Stdout)
+	streamed := false
+	for _, item := range result.Content {
+		if tc, ok := item.(*mcpSDK.TextContent); ok && tc.Text != "" {
+			if _, err := writer.WriteString(tc.Text); err != nil {
+				return streamed, err
+			}
+			if err := writer.WriteByte('\n'); err != nil {
+				return streamed, err
+			}
+			if err := writer.Flush(); err != nil {
+				return streamed, err
+			}
+			streamed = true
+		}
+	}
+	return streamed, nil
 }
 
 // formatCallToolResult formats the CallToolResult for JSON output

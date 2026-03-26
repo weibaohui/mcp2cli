@@ -25,6 +25,45 @@ func NewDispatcher(config *MCPConfig, loadedPaths []string) *Dispatcher {
 	}
 }
 
+// GetClient returns a client for the given server name, creating one if needed
+func (d *Dispatcher) GetClient(serverName string) (*Client, error) {
+	d.mu.RLock()
+	client, exists := d.clients[serverName]
+	d.mu.RUnlock()
+
+	if exists {
+		return client, nil
+	}
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if client, exists = d.clients[serverName]; exists {
+		return client, nil
+	}
+
+	cfg, ok := d.config.MCPServers[serverName]
+	if !ok {
+		return nil, ServerNotFoundErrors(serverName)
+	}
+
+	client = NewClient(serverName, cfg)
+	d.clients[serverName] = client
+	return client, nil
+}
+
+// Close closes all client connections
+func (d *Dispatcher) Close() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for name, client := range d.clients {
+		client.Close()
+		delete(d.clients, name)
+	}
+}
+
 // ConfigPaths returns the loaded config file paths
 func (d *Dispatcher) ConfigPaths() []string {
 	return d.loadedPaths
@@ -124,15 +163,15 @@ func (d *Dispatcher) ListAllServers(ctx context.Context) []ServerInfo {
 
 // GetServerInfo returns info for a specific server
 func (d *Dispatcher) GetServerInfo(ctx context.Context, serverName string) (*ServerInfo, error) {
-	d.mu.RLock()
 	cfg, ok := d.config.MCPServers[serverName]
-	d.mu.RUnlock()
-
 	if !ok {
 		return nil, ServerNotFoundErrors(serverName)
 	}
 
-	client := NewClient(serverName, cfg)
+	client, err := d.GetClient(serverName)
+	if err != nil {
+		return nil, err
+	}
 	transport := InferTransportType(cfg)
 
 	info := &ServerInfo{
@@ -163,15 +202,15 @@ func (d *Dispatcher) GetServerInfo(ctx context.Context, serverName string) (*Ser
 
 // GetToolInfo returns info for a specific tool on a server
 func (d *Dispatcher) GetToolInfo(ctx context.Context, serverName, toolName string) (*ToolMatch, error) {
-	d.mu.RLock()
-	cfg, ok := d.config.MCPServers[serverName]
-	d.mu.RUnlock()
-
+	_, ok := d.config.MCPServers[serverName]
 	if !ok {
 		return nil, ServerNotFoundErrors(serverName)
 	}
 
-	client := NewClient(serverName, cfg)
+	client, err := d.GetClient(serverName)
+	if err != nil {
+		return nil, err
+	}
 
 	tools, err := client.ListTools(ctx)
 	if err != nil {
@@ -253,15 +292,15 @@ func (d *Dispatcher) FindTool(ctx context.Context, toolName string) ([]ToolMatch
 
 // CallTool calls a tool on a server with retry on network failures
 func (d *Dispatcher) CallTool(ctx context.Context, toolName, serverName string, params map[string]any) (string, any, error) {
-	d.mu.RLock()
-	cfg, ok := d.config.MCPServers[serverName]
-	d.mu.RUnlock()
-
+	_, ok := d.config.MCPServers[serverName]
 	if !ok {
 		return "", nil, ServerNotFoundErrors(serverName)
 	}
 
-	client := NewClient(serverName, cfg)
+	client, err := d.GetClient(serverName)
+	if err != nil {
+		return "", nil, err
+	}
 
 	// Retry on network errors
 	const maxRetries = 3

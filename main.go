@@ -119,6 +119,7 @@ func runInteractive(cmd *cobra.Command, args []string) error {
 	}
 
 	dispatcher := mcp.NewDispatcher(config, loadedPaths)
+	defer dispatcher.Close()
 	currentServer := ""
 
 	// Set up signal handling for graceful exit

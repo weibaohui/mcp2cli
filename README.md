@@ -9,7 +9,7 @@
 
 ```bash
 # Install
-go install github.com/weibaohui/mcp2cli@latest
+go install github.com/weibaohui/mcp2cli/cmd/mcp@latest
 
 # List configured servers (no server connection)
 mcp
@@ -61,7 +61,7 @@ Download from [GitHub Releases](https://github.com/weibaohui/mcp2cli/releases/la
 ### From source
 
 ```bash
-go install github.com/weibaohui/mcp2cli@latest
+go install github.com/weibaohui/mcp2cli/cmd/mcp@latest
 ```
 
 ### Build from source

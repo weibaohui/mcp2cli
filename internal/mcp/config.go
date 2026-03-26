@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 )
@@ -160,4 +161,31 @@ func normalizeTransportType(t string) string {
 	}
 
 	return t
+}
+
+// SaveConfig saves the config to a specific path
+func SaveConfig(config *MCPConfig, path string) error {
+	path = ExpandHome(path)
+
+	// Ensure directory exists
+	dir := strings.TrimSuffix(path, "/config.json")
+	dir = strings.TrimSuffix(dir, "/mcp.json")
+	if dir != path {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create config directory: %w", err)
+		}
+	}
+
+	// Marshal to JSON with indentation
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	// Write to file
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	return nil
 }

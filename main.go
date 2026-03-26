@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,8 @@ import (
 )
 
 const version = "v0.2.8"
+
+var streamOutput bool
 
 var rootCmd = &cobra.Command{
 	Use:   "mcp",
@@ -40,9 +43,16 @@ Usage examples:
   mcp openDeepWiki list_repositories
 
   # Call a tool (args format: key=value or key:type=value)
-  mcp openDeepWiki list_repositories limit=3`,
+  mcp openDeepWiki list_repositories limit=3
+
+  # Call a tool with streaming output
+  mcp --stream openDeepWiki list_repositories limit=3`,
 	Args: cobra.ArbitraryArgs,
 	Run:  runMCP,
+}
+
+func init() {
+	rootCmd.Flags().BoolVarP(&streamOutput, "stream", "s", false, "Enable streaming output for text results")
 }
 
 func main() {
@@ -153,11 +163,34 @@ func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 	// Format result - callResult is *mcp.CallToolResult
 	output := formatCallToolResult(callResult)
 
+	if streamOutput {
+		if cr, ok := callResult.(*mcpSDK.CallToolResult); ok {
+			streamTextContent(cr)
+		}
+		return
+	}
+
 	printMCPSuccess(map[string]any{
 		"server": actualServer,
 		"method": toolName,
 		"result": output,
 	})
+}
+
+// streamTextContent outputs text content progressively for streaming mode
+func streamTextContent(result *mcpSDK.CallToolResult) {
+	if result == nil || result.Content == nil {
+		return
+	}
+
+	writer := bufio.NewWriter(os.Stdout)
+	for _, item := range result.Content {
+		if tc, ok := item.(*mcpSDK.TextContent); ok && tc.Text != "" {
+			writer.WriteString(tc.Text)
+			writer.WriteByte('\n')
+			writer.Flush()
+		}
+	}
 }
 
 // formatCallToolResult formats the CallToolResult for JSON output

@@ -1,6 +1,6 @@
 {
   "name": "@weibaohui/mcp2cli",
-  "version": "0.2.8",
+  "version": "0.3.0",
   "description": "CLI tool for interacting with MCP (Model Context Protocol) Servers",
   "author": "weibaohui",
   "license": "MIT",

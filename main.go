@@ -17,7 +17,7 @@ import (
 	"github.com/weibaohui/mcp2cli/internal/mcp"
 )
 
-const version = "v0.2.8"
+const version = "v0.3.0"
 
 var streamOutput bool
 

@@ -14,6 +14,9 @@ npm install -g @weibaohui/mcp2cli
 # Or install via Go
 go install github.com/weibaohui/mcp2cli@latest
 
+# Rename to mcp for convenience
+mv $(go env GOPATH)/bin/mcp2cli $(go env GOPATH)/bin/mcp
+
 # List configured servers (no server connection)
 mcp
 
@@ -73,6 +76,9 @@ Download from [GitHub Releases](https://github.com/weibaohui/mcp2cli/releases/la
 
 ```bash
 go install github.com/weibaohui/mcp2cli@latest
+
+# Rename to mcp for convenience
+mv $(go env GOPATH)/bin/mcp2cli $(go env GOPATH)/bin/mcp
 ```
 
 ### Build from source

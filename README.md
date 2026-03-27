@@ -60,19 +60,15 @@ mcp server tool name:string=John age:number=30 enabled:bool=true
 
 ## Installation
 
-### npm (multi-platform)
+### npm (multi-platform) - recommended
 
 ```bash
 npm install -g @weibaohui/mcp2cli
 ```
 
-Supports Linux, macOS, Windows on amd64/arm64.
+Supports Linux, macOS, Windows on amd64/arm64. 安装后直接使用 `mcp` 命令，无需额外操作。
 
-### Binary (latest release)
-
-Download from [GitHub Releases](https://github.com/weibaohui/mcp2cli/releases/latest)
-
-### From source
+### Go install
 
 ```bash
 go install github.com/weibaohui/mcp2cli@latest
@@ -81,12 +77,33 @@ go install github.com/weibaohui/mcp2cli@latest
 mv $(go env GOPATH)/bin/mcp2cli $(go env GOPATH)/bin/mcp
 ```
 
+安装后可执行文件名为 `mcp2cli`，需手动重命名为 `mcp`：
+
+```bash
+mv $(go env GOPATH)/bin/mcp2cli $(go env GOPATH)/bin/mcp
+```
+
+### Binary download
+
+Download from [GitHub Releases](https://github.com/weibaohui/mcp2cli/releases/latest), then rename and install：
+
+```bash
+# macOS / Linux
+mv mcp2cli-darwin-arm64 mcp
+chmod +x mcp
+sudo mv mcp /usr/local/bin/
+
+# Windows
+ren mcp2cli-windows-amd64.exe mcp.exe
+```
+
 ### Build from source
 
 ```bash
 git clone https://github.com/weibaohui/mcp2cli.git
 cd mcp2cli
 make build
+cp bin/mcp2cli /usr/local/bin/mcp
 ```
 
 ## Configuration

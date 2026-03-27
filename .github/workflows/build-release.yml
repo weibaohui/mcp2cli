@@ -3,6 +3,9 @@ name: Build and Release
 on:
   release:
     types: [created, published]
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -27,6 +30,11 @@ jobs:
         run: |
           make build-all GIT_COMMIT=${{ github.sha }} GIT_TAG=${{ github.ref_name }} GIT_REPOSITORY=${{ github.repository }} BUILD_DATE=${{ env.BUILD_TIME }} VERSION=${{ github.ref_name }}
 
+      - name: Copy to dist for npm
+        run: |
+          mkdir -p dist
+          cp bin/mcp2cli-* dist/
+
       - name: Upload Release Assets
         uses: svenstaro/upload-release-action@v2
         with:
@@ -35,3 +43,25 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
+
+  publish-npm:
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Copy binaries from build job
+        run: |
+          mkdir -p dist
+          cp bin/mcp2cli-* dist/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -18,7 +18,7 @@ ALL_PLATFORMS := \
 # Bin directory
 BIN_DIR := bin
 
-.PHONY: all build build-all build-all-cross clean install test lint
+.PHONY: all build build-all build-all-cross clean install test lint fmt build-linux build-darwin build-windows version help
 
 all: build
 
@@ -26,7 +26,7 @@ all: build
 build:
 	@echo "Building mcp2cli for current platform..."
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.GitTag=$(GIT_TAG) -X main.GitRepo=$(GIT_REPOSITORY)" -o $(BIN_DIR)/mcp2cli ./cmd/mcp/
+	CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.GitTag=$(GIT_TAG) -X main.GitRepo=$(GIT_REPOSITORY)" -o $(BIN_DIR)/mcp2cli .
 	@echo "Build complete: $(BIN_DIR)/mcp2cli"
 
 # Cross-platform build for all platforms
@@ -40,7 +40,7 @@ build-all-cross:
 		if [ "$$GOOS" = "windows" ]; then \
 			OUTPUT_FILE="$(BIN_DIR)/mcp2cli-$$GOOS-$$GOARCH.exe"; \
 		fi; \
-		CGO_ENABLED=0 GOOS=$$GOOS GOARCH=$$GOARCH go build -ldflags "-s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.GitTag=$(GIT_TAG) -X main.GitRepo=$(GIT_REPOSITORY)" -o "$$OUTPUT_FILE" ./cmd/mcp/; \
+		CGO_ENABLED=0 GOOS=$$GOOS GOARCH=$$GOARCH go build -ldflags "-s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.GitTag=$(GIT_TAG) -X main.GitRepo=$(GIT_REPOSITORY)" -o "$$OUTPUT_FILE" .; \
 		echo "  --> $$OUTPUT_FILE"; \
 	done
 	@echo ""
@@ -60,7 +60,7 @@ clean:
 install:
 	@echo "Installing mcp2cli to /usr/local/bin..."
 	@mkdir -p $(BIN_DIR)
-	@CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.GitTag=$(GIT_TAG) -X main.GitRepo=$(GIT_REPOSITORY)" -o $(BIN_DIR)/mcp2cli ./cmd/mcp/
+	@CGO_ENABLED=0 go build -ldflags "-s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.GitTag=$(GIT_TAG) -X main.GitRepo=$(GIT_REPOSITORY)" -o $(BIN_DIR)/mcp2cli .
 	@install -Dm755 $(BIN_DIR)/mcp2cli /usr/local/bin/mcp2cli
 	@echo "Installed to /usr/local/bin/mcp2cli"
 
@@ -92,7 +92,7 @@ build-linux:
 	@for platform in linux/amd64 linux/arm64; do \
 		GOOS=$${platform%/*} GOARCH=$${platform#*/}; \
 		echo "Building platform: $$GOOS/$$GOARCH ..."; \
-		CGO_ENABLED=0 GOOS=$$GOOS GOARCH=$$GOARCH go build -ldflags "-s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.GitTag=$(GIT_TAG) -X main.GitRepo=$(GIT_REPOSITORY)" -o "$(BIN_DIR)/mcp2cli-$$GOOS-$$GOARCH" ./cmd/mcp/; \
+		CGO_ENABLED=0 GOOS=$$GOOS GOARCH=$$GOARCH go build -ldflags "-s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.GitTag=$(GIT_TAG) -X main.GitRepo=$(GIT_REPOSITORY)" -o "$(BIN_DIR)/mcp2cli-$$GOOS-$$GOARCH" .; \
 		echo "  --> $(BIN_DIR)/mcp2cli-$$GOOS-$$GOARCH"; \
 	done
 	@echo "Linux build complete!"
@@ -104,7 +104,7 @@ build-darwin:
 	@for platform in darwin/amd64 darwin/arm64; do \
 		GOOS=$${platform%/*} GOARCH=$${platform#*/}; \
 		echo "Building platform: $$GOOS/$$GOARCH ..."; \
-		CGO_ENABLED=0 GOOS=$$GOOS GOARCH=$$GOARCH go build -ldflags "-s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.GitTag=$(GIT_TAG) -X main.GitRepo=$(GIT_REPOSITORY)" -o "$(BIN_DIR)/mcp2cli-$$GOOS-$$GOARCH" ./cmd/mcp/; \
+		CGO_ENABLED=0 GOOS=$$GOOS GOARCH=$$GOARCH go build -ldflags "-s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.GitTag=$(GIT_TAG) -X main.GitRepo=$(GIT_REPOSITORY)" -o "$(BIN_DIR)/mcp2cli-$$GOOS-$$GOARCH" .; \
 		echo "  --> $(BIN_DIR)/mcp2cli-$$GOOS-$$GOARCH"; \
 	done
 	@echo "macOS build complete!"
@@ -116,7 +116,7 @@ build-windows:
 	@for platform in windows/amd64 windows/arm64; do \
 		GOOS=$${platform%/*} GOARCH=$${platform#*/}; \
 		echo "Building platform: $$GOOS/$$GOARCH ..."; \
-		CGO_ENABLED=0 GOOS=$$GOOS GOARCH=$$GOARCH go build -ldflags "-s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.GitTag=$(GIT_TAG) -X main.GitRepo=$(GIT_REPOSITORY)" -o "$(BIN_DIR)/mcp2cli-$$GOOS-$$GOARCH.exe" ./cmd/mcp/; \
+		CGO_ENABLED=0 GOOS=$$GOOS GOARCH=$$GOARCH go build -ldflags "-s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.GitTag=$(GIT_TAG) -X main.GitRepo=$(GIT_REPOSITORY)" -o "$(BIN_DIR)/mcp2cli-$$GOOS-$$GOARCH.exe" .; \
 		echo "  --> $(BIN_DIR)/mcp2cli-$$GOOS-$$GOARCH.exe"; \
 	done
 	@echo "Windows build complete!"

@@ -1,0 +1,43 @@
+{
+  "name": "mcp2cli",
+  "version": "0.2.8",
+  "description": "CLI tool for interacting with MCP (Model Context Protocol) Servers",
+  "author": "weibaohui",
+  "license": "MIT",
+  "homepage": "https://github.com/weibaohui/mcp2cli",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/weibaohui/mcp2cli.git"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "cli",
+    "tool"
+  ],
+  "os": [
+    "linux",
+    "darwin",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "main": "index.js",
+  "bin": {
+    "mcp": "./install.js"
+  },
+  "files": [
+    "dist/",
+    "index.js",
+    "install.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  }
+}

@@ -1,0 +1,35 @@
+# Source files
+*.go
+go.*
+!.go/
+
+# Development files
+.git/
+.github/
+bin/
+docs/
+spec/
+internal/
+cmd/
+
+# Config files
+Makefile
+.env*
+*.md
+!README.md
+
+# Test files
+*_test.go
+*_test.sh
+coverage.out
+coverage.html
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

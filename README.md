@@ -8,11 +8,11 @@
 ## Quick Usage
 
 ```bash
-# Install
-go install github.com/weibaohui/mcp2cli@latest
+# Install via npm (recommended)
+npm install -g @weibaohui/mcp2cli
 
-# Rename to mcp for convenience
-mv $(go env GOPATH)/bin/mcp2cli $(go env GOPATH)/bin/mcp
+# Or install via Go
+go install github.com/weibaohui/mcp2cli@latest
 
 # List configured servers (no server connection)
 mcp
@@ -56,6 +56,14 @@ mcp server tool name:string=John age:number=30 enabled:bool=true
 - **📤 Unified JSON Output** - Machine-readable output for scripting
 
 ## Installation
+
+### npm (multi-platform)
+
+```bash
+npm install -g @weibaohui/mcp2cli
+```
+
+Supports Linux, macOS, Windows on amd64/arm64.
 
 ### Binary (latest release)
 
@@ -203,7 +211,7 @@ All commands return unified JSON:
 ## Architecture
 
 ```
-cmd/mcp/main.go          # CLI entry point, argument routing
+main.go                   # CLI entry point, argument routing
 internal/mcp/
   ├── types.go           # Error codes, shared types
   ├── config.go          # Config loading & merging

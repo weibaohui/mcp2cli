@@ -1,6 +1,8 @@
 # mcp2cli
 
-> Turn MCP servers into CLI commands — one bash call replaces dozens of tool rounds.
+> A CLI-native MCP client that loads tool schemas on-demand and resolves discover-then-call into a single invocation — keeping tool definitions out of your context window.
+
+**One bash command → tool discovery + schema resolution + precise invocation. No persistent tool definitions, no token waste.**
 
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat-square&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)

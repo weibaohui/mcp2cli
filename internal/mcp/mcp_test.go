@@ -607,7 +607,7 @@ func TestConfigureOAuth_withoutAuth(t *testing.T) {
 
 func TestConfigureOAuth_withoutOAuth(t *testing.T) {
 	client := NewClient("test", ServerConfig{
-		URL: "https://example.com/mcp",
+		URL:  "https://example.com/mcp",
 		Auth: AuthConfig{},
 	})
 
@@ -618,5 +618,334 @@ func TestConfigureOAuth_withoutOAuth(t *testing.T) {
 
 	if token != "" {
 		t.Errorf("expected empty token, got %q", token)
+	}
+}
+
+// YAML parsing tests
+
+func TestParseYAML_simple(t *testing.T) {
+	yamlStr := `name: John
+age: 30`
+	result, err := ParseYAML(yamlStr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result["name"] != "John" {
+		t.Errorf("expected 'John', got %v", result["name"])
+	}
+
+	// YAML may return int or float64 depending on library version
+	age := result["age"]
+	ageNum := 0.0
+	switch v := age.(type) {
+	case int:
+		ageNum = float64(v)
+	case float64:
+		ageNum = v
+	default:
+		t.Fatalf("expected age to be numeric, got %T", age)
+	}
+	if ageNum != 30 {
+		t.Errorf("expected 30, got %v", age)
+	}
+}
+
+func TestParseYAML_nestedObject(t *testing.T) {
+	yamlStr := `name: John
+details:
+  age: 30
+  city: NYC`
+	result, err := ParseYAML(yamlStr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result["name"] != "John" {
+		t.Errorf("expected 'John', got %v", result["name"])
+	}
+
+	details, ok := result["details"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected details to be map, got %T", result["details"])
+	}
+
+	// YAML may return int or float64
+	age := details["age"]
+	ageNum := 0.0
+	switch v := age.(type) {
+	case int:
+		ageNum = float64(v)
+	case float64:
+		ageNum = v
+	default:
+		t.Fatalf("expected age to be numeric, got %T", age)
+	}
+	if ageNum != 30 {
+		t.Errorf("expected age 30, got %v", age)
+	}
+
+	if details["city"] != "NYC" {
+		t.Errorf("expected 'NYC', got %v", details["city"])
+	}
+}
+
+func TestParseYAML_array(t *testing.T) {
+	yamlStr := `tags:
+  - dev
+  - ops
+  - ci`
+	result, err := ParseYAML(yamlStr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tags, ok := result["tags"].([]any)
+	if !ok {
+		t.Fatalf("expected tags to be array, got %T", result["tags"])
+	}
+
+	if len(tags) != 3 {
+		t.Fatalf("expected 3 tags, got %d", len(tags))
+	}
+
+	if tags[0] != "dev" || tags[1] != "ops" || tags[2] != "ci" {
+		t.Errorf("unexpected tags: %v", tags)
+	}
+}
+
+func TestParseYAML_bool(t *testing.T) {
+	yamlStr := `enabled: true
+disabled: false`
+	result, err := ParseYAML(yamlStr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result["enabled"] != true {
+		t.Errorf("expected true, got %v", result["enabled"])
+	}
+
+	if result["disabled"] != false {
+		t.Errorf("expected false, got %v", result["disabled"])
+	}
+}
+
+func TestParseYAML_float(t *testing.T) {
+	yamlStr := `price: 19.99
+ratio: 0.5`
+	result, err := ParseYAML(yamlStr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result["price"] != 19.99 {
+		t.Errorf("expected 19.99, got %v", result["price"])
+	}
+
+	if result["ratio"] != 0.5 {
+		t.Errorf("expected 0.5, got %v", result["ratio"])
+	}
+}
+
+func TestParseYAML_invalidYAML(t *testing.T) {
+	yamlStr := `name: [invalid yaml`
+	_, err := ParseYAML(yamlStr)
+	if err == nil {
+		t.Error("expected error for invalid YAML")
+	}
+}
+
+func TestParseYAML_empty(t *testing.T) {
+	yamlStr := ``
+	_, err := ParseYAML(yamlStr)
+	if err == nil {
+		t.Error("expected error for empty YAML")
+	}
+}
+
+func TestParseYAML_comments(t *testing.T) {
+	yamlStr := `# This is a comment
+name: John  # inline comment
+# Another comment
+age: 30`
+	result, err := ParseYAML(yamlStr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result["name"] != "John" {
+		t.Errorf("expected 'John', got %v", result["name"])
+	}
+
+	// YAML may return int or float64
+	age := result["age"]
+	ageNum := 0.0
+	switch v := age.(type) {
+	case int:
+		ageNum = float64(v)
+	case float64:
+		ageNum = v
+	default:
+		t.Fatalf("expected age to be numeric, got %T", age)
+	}
+	if ageNum != 30 {
+		t.Errorf("expected 30, got %v", age)
+	}
+}
+
+func TestParseYAML_multilineString(t *testing.T) {
+	yamlStr := `description: |
+  This is a multiline
+  string that spans
+  multiple lines`
+	result, err := ParseYAML(yamlStr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	desc, ok := result["description"].(string)
+	if !ok {
+		t.Fatalf("expected description to be string, got %T", result["description"])
+	}
+
+	if desc != "This is a multiline\nstring that spans\nmultiple lines" {
+		t.Errorf("unexpected multiline content: %q", desc)
+	}
+}
+
+func TestReadYAMLFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	yamlContent := `name: John
+age: 30`
+	yamlPath := filepath.Join(tmpDir, "params.yaml")
+	if err := os.WriteFile(yamlPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatalf("failed to write yaml file: %v", err)
+	}
+
+	result, err := ReadYAMLFile(yamlPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result["name"] != "John" {
+		t.Errorf("expected 'John', got %v", result["name"])
+	}
+
+	// YAML may return int or float64
+	age := result["age"]
+	ageNum := 0.0
+	switch v := age.(type) {
+	case int:
+		ageNum = float64(v)
+	case float64:
+		ageNum = v
+	default:
+		t.Fatalf("expected age to be numeric, got %T", age)
+	}
+	if ageNum != 30 {
+		t.Errorf("expected 30, got %v", age)
+	}
+}
+
+func TestReadYAMLFile_notFound(t *testing.T) {
+	_, err := ReadYAMLFile("/nonexistent/path.yaml")
+	if err == nil {
+		t.Error("expected error for nonexistent file")
+	}
+}
+
+func TestReadYAMLFile_invalidYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	invalidContent := `name: [broken`
+	yamlPath := filepath.Join(tmpDir, "invalid.yaml")
+	if err := os.WriteFile(yamlPath, []byte(invalidContent), 0644); err != nil {
+		t.Fatalf("failed to write invalid yaml: %v", err)
+	}
+
+	_, err := ReadYAMLFile(yamlPath)
+	if err == nil {
+		t.Error("expected error for invalid YAML in file")
+	}
+}
+
+func TestIsPipedInput_true(t *testing.T) {
+	// Create a pipe with data
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	defer r.Close()
+	defer w.Close()
+
+	// Write some data
+	w.Write([]byte("test"))
+	w.Close()
+
+	// Save original stdin and restore after test
+	oldStdin := os.Stdin
+	defer func() { os.Stdin = oldStdin }()
+
+	// Replace stdin with our pipe reader
+	os.Stdin = r
+
+	if !IsPipedInput() {
+		t.Error("expected IsPipedInput to return true for pipe with data")
+	}
+}
+
+func TestIsPipedInput_false(t *testing.T) {
+	// This test works because in normal test execution,
+	// stdin is not a pipe. We can't easily mock this,
+	// but we can verify the function returns false when
+	// stdin is a terminal (which is the default in tests)
+	result := IsPipedInput()
+	if result != false {
+		t.Errorf("expected false for non-piped stdin, got %v", result)
+	}
+}
+
+func TestReadStdinYAML(t *testing.T) {
+	// Create a pipe with YAML data
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	defer r.Close()
+	defer w.Close()
+
+	yamlContent := "name: piped\nage: 25"
+	w.Write([]byte(yamlContent))
+	w.Close()
+
+	// Save original stdin
+	oldStdin := os.Stdin
+	defer func() { os.Stdin = oldStdin }()
+
+	// Replace stdin
+	os.Stdin = r
+
+	result, err := ReadStdinYAML()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result["name"] != "piped" {
+		t.Errorf("expected 'piped', got %v", result["name"])
+	}
+
+	// YAML may return int or float64
+	age := result["age"]
+	ageNum := 0.0
+	switch v := age.(type) {
+	case int:
+		ageNum = float64(v)
+	case float64:
+		ageNum = v
+	default:
+		t.Fatalf("expected age to be numeric, got %T", age)
+	}
+	if ageNum != 25 {
+		t.Errorf("expected 25, got %v", age)
 	}
 }

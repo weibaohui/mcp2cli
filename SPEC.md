@@ -359,6 +359,15 @@ Usage examples:
 
   # Call a tool (args format: key=value or key:type=value)
   mcp openDeepWiki list_repositories limit=3
+
+  # Call with YAML parameters (inline)
+  mcp openDeepWiki list_repositories --yaml 'limit: 3 repoOwner: github'
+
+  # Call with YAML from file (like kubectl apply -f)
+  mcp openDeepWiki create_issue -f issue.yaml
+
+  # Pipe YAML to stdin
+  cat issue.yaml | mcp openDeepWiki create_issue
 ```
 
 ## 6. Operation Details
@@ -381,6 +390,12 @@ Gets detailed tool info with human-readable formatting:
 ### 6.4 3+ Args Mode (call)
 
 Parses `key=value` or `key:type=value` arguments and calls the tool.
+
+**Parameter Input Methods:**
+1. `key=value` format (default, backward compatible)
+2. `-f <file>` / `--file=<file>`: Read YAML from file
+3. `--yaml <yaml>` / `-y <yaml>`: Inline YAML string
+4. stdin pipe (auto-detected if no positional args and stdin has data)
 
 ## 7. Unified Output Format
 
@@ -430,7 +445,49 @@ Supports formats:
 - `key:number=123`
 - `key:bool=true`
 
-### 9.2 FormatInputSchema
+### 9.2 YAML Parameter Input
+
+Supports three input modes for complex parameters (objects, arrays, multi-line text):
+
+#### 9.2.1 Inline YAML (`--yaml` or `-y`)
+
+```bash
+mcp server tool --yaml 'name: John details: {age: 30, city: NYC}'
+mcp server tool -y 'tags: [dev, ops] enabled: true'
+```
+
+#### 9.2.2 File Input (`-f` or `--file`)
+
+```bash
+mcp server tool -f params.yaml
+mcp server tool --file=/path/to/params.yaml
+```
+
+#### 9.2.3 Pipe Input (auto-detect stdin)
+
+```bash
+cat params.yaml | mcp server tool
+echo 'name: test' | mcp server tool
+```
+
+#### 9.2.4 Priority
+
+When multiple input methods are present:
+1. `-f` / `--file` takes highest priority
+2. `--yaml` / `-y` second priority
+3. stdin pipe (if detected and no positional args) third priority
+4. Fall back to `key=value` parsing
+
+#### 9.2.5 YAML to JSON Conversion
+
+YAML is automatically converted to JSON for MCP protocol:
+- YAML booleans → JSON booleans
+- YAML numbers → JSON numbers
+- YAML strings → JSON strings
+- YAML arrays → JSON arrays
+- YAML objects → JSON objects
+
+### 9.3 FormatInputSchema
 
 Transforms JSON Schema to human-readable format:
 ```

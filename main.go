@@ -15,6 +15,7 @@ import (
 	mcpSDK "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 	"github.com/weibaohui/mcp2cli/internal/mcp"
+	"gopkg.in/yaml.v3"
 )
 
 const version = "v0.3.0"
@@ -22,6 +23,11 @@ const version = "v0.3.0"
 var streamOutput bool
 var yamlParams string
 var yamlFile string
+var outputFormat string
+
+const outputFormatJSON = "json"
+const outputFormatYAML = "yaml"
+const outputFormatText = "text"
 
 var rootCmd = &cobra.Command{
 	Use:   "mcp",
@@ -59,7 +65,11 @@ Usage examples:
   mcp openDeepWiki create_issue -f issue.yaml
 
   # Pipe YAML to stdin
-  cat issue.yaml | mcp openDeepWiki create_issue`,
+  cat issue.yaml | mcp openDeepWiki create_issue
+
+  # Output in different formats (default: json)
+  mcp --output yaml openDeepWiki list_repositories
+  mcp --output text openDeepWiki list_repositories`,
 	Args: cobra.ArbitraryArgs,
 	Run:  runMCP,
 }
@@ -88,6 +98,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&streamOutput, "stream", "s", false, "Enable streaming output for text results")
 	rootCmd.PersistentFlags().StringVarP(&yamlParams, "yaml", "y", "", "YAML parameters (inline)")
 	rootCmd.PersistentFlags().StringVarP(&yamlFile, "file", "f", "", "YAML file with parameters (like kubectl apply -f)")
+	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "json", "Output format (json|yaml|text)")
 	rootCmd.AddCommand(interactiveCmd)
 }
 
@@ -488,11 +499,13 @@ func printMCPSuccess(data any) {
 			"version":   version,
 		},
 	}
-	PrintJSON(output)
+	printOutput(output)
 }
 
 func printMCPError(err error) {
 	var mcpErr *mcp.MCPError
+	var output map[string]any
+
 	if errors.As(err, &mcpErr) {
 		errObj := map[string]any{
 			"code":    mcpErr.Code,
@@ -501,29 +514,29 @@ func printMCPError(err error) {
 		if len(mcpErr.Details) > 0 {
 			errObj["details"] = mcpErr.Details
 		}
-		PrintJSON(map[string]any{
+		output = map[string]any{
 			"success": false,
 			"error":   errObj,
 			"meta": map[string]any{
 				"timestamp": time.Now().UTC().Format(time.RFC3339),
 				"version":   version,
 			},
-		})
-		return
+		}
+	} else {
+		// Generic error
+		output = map[string]any{
+			"success": false,
+			"error": map[string]any{
+				"code":    "INTERNAL_ERROR",
+				"message": err.Error(),
+			},
+			"meta": map[string]any{
+				"timestamp": time.Now().UTC().Format(time.RFC3339),
+				"version":   version,
+			},
+		}
 	}
-
-	// Generic error
-	PrintJSON(map[string]any{
-		"success": false,
-		"error": map[string]any{
-			"code":    "INTERNAL_ERROR",
-			"message": err.Error(),
-		},
-		"meta": map[string]any{
-			"timestamp": time.Now().UTC().Format(time.RFC3339),
-			"version":   version,
-		},
-	})
+	printOutput(output)
 }
 
 // PrintJSON prints JSON to stdout
@@ -534,5 +547,37 @@ func PrintJSON(v any) {
 	if err := enc.Encode(v); err != nil {
 		fmt.Fprintf(os.Stderr, "failed to encode JSON: %v\n", err)
 		os.Exit(1)
+	}
+}
+
+// PrintYAML prints YAML to stdout
+func PrintYAML(v any) {
+	enc := yaml.NewEncoder(os.Stdout)
+	enc.SetIndent(2)
+	if err := enc.Encode(v); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to encode YAML: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// PrintText prints text content to stdout (simplified output)
+func PrintText(v any) {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to marshal: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(string(data))
+}
+
+// printOutput prints output in the specified format
+func printOutput(v any) {
+	switch outputFormat {
+	case outputFormatYAML:
+		PrintYAML(v)
+	case outputFormatText:
+		PrintText(v)
+	default:
+		PrintJSON(v)
 	}
 }

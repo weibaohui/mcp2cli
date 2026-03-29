@@ -368,6 +368,10 @@ Usage examples:
 
   # Pipe YAML to stdin
   cat issue.yaml | mcp openDeepWiki create_issue
+
+  # Output in different formats (default: json)
+  mcp --output yaml openDeepWiki list_repositories
+  mcp --output text openDeepWiki list_repositories
 ```
 
 ## 6. Operation Details
@@ -396,6 +400,22 @@ Parses `key=value` or `key:type=value` arguments and calls the tool.
 2. `-f <file>` / `--file=<file>`: Read YAML from file
 3. `--yaml <yaml>` / `-y <yaml>`: Inline YAML string
 4. stdin pipe (auto-detected if no positional args and stdin has data)
+
+### 6.5 Output Format
+
+Global flag `--output` / `-o` controls output format:
+
+| Format | Description |
+|--------|-------------|
+| `json` | JSON output (default) |
+| `yaml` | YAML output |
+| `text` | Plain text (JSON without indentation) |
+
+Examples:
+```bash
+mcp --output yaml openDeepWiki list_repositories
+mcp -o text openDeepWiki list_repositories
+```
 
 ## 7. Unified Output Format
 

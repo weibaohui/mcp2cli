@@ -192,13 +192,6 @@ npm install -g @weibaohui/mcp2cli
 
 Supports Linux, macOS, Windows on amd64/arm64. `mcp` command ready immediately.
 
-### Go install
-
-```bash
-go install github.com/weibaohui/mcp2cli@latest
-mv $(go env GOPATH)/bin/mcp2cli $(go env GOPATH)/bin/mcp
-```
-
 ### Binary download
 
 Download from [GitHub Releases](https://github.com/weibaohui/mcp2cli/releases/latest):

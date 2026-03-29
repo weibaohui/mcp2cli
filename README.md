@@ -126,6 +126,8 @@ $ mcp openDeepWiki get_repo_structure repoOwner=weibaohui repoName=mcp2cli
 
 ## Argument Format
 
+### Simple Arguments (key=value)
+
 ```bash
 # Simple key=value (string by default)
 mcp server tool name=John age=30
@@ -135,6 +137,50 @@ mcp server tool name:string=John age:number=30 enabled:bool=true
 ```
 
 **Supported types:** `string`, `number`, `int`, `float`, `bool`
+
+### YAML Input (for complex parameters)
+
+For complex parameters (objects, arrays, multi-line text), use YAML format:
+
+```bash
+# Inline YAML with --yaml or -y
+mcp server tool --yaml 'name: John details: {age: 30, city: NYC}'
+mcp server tool -y 'tags: [dev, ops] enabled: true'
+
+# Multi-line YAML
+mcp server tool --yaml 'limit: 10
+offset: 5
+status: "ready"'
+
+# Read from file (like kubectl apply -f)
+mcp server tool -f params.yaml
+
+# Pipe YAML to stdin
+cat params.yaml | mcp server tool
+```
+
+**Priority:** `-f` > `--yaml/-y` > stdin pipe > `key=value`
+
+### Output Format
+
+Control output format with `--output` / `-o`:
+
+```bash
+# JSON (default, human-readable with indentation)
+mcp server tool
+
+# YAML output
+mcp --output yaml server tool
+
+# Text output (compact JSON, good for piping)
+mcp -o text server tool
+```
+
+| Format | Description | Use Case |
+|--------|-------------|----------|
+| `json` | Pretty-printed JSON | Default, debugging |
+| `yaml` | YAML format | Config files, readability |
+| `text` | Compact JSON | Piping, scripts |
 
 ## Installation
 
@@ -173,6 +219,15 @@ ren mcp2cli-windows-amd64.exe mcp.exe
 | `mcp <server>` | List tools on a server |
 | `mcp <server> <tool>` | Show tool details + param examples |
 | `mcp <server> <tool> key=value ...` | Call a tool |
+
+### Global Flags
+
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--output` | `-o` | Output format (json\|yaml\|text) | `json` |
+| `--yaml` | `-y` | YAML parameters (inline) | |
+| `--file` | `-f` | YAML file with parameters | |
+| `--stream` | `-s` | Enable streaming output | `false` |
 
 ## License
 

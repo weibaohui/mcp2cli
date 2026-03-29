@@ -25,9 +25,9 @@ var yamlParams string
 var yamlFile string
 var outputFormat string
 
-const outputFormatJSON = "json"
+const outputFormatPretty = "pretty"
+const outputFormatCompact = "compact"
 const outputFormatYAML = "yaml"
-const outputFormatText = "text"
 
 var rootCmd = &cobra.Command{
 	Use:   "mcp",
@@ -67,9 +67,9 @@ Usage examples:
   # Pipe YAML to stdin
   cat issue.yaml | mcp openDeepWiki create_issue
 
-  # Output in different formats (default: json)
+  # Output in different formats (default: pretty)
   mcp --output yaml openDeepWiki list_repositories
-  mcp --output text openDeepWiki list_repositories`,
+  mcp --output compact openDeepWiki list_repositories`,
 	Args: cobra.ArbitraryArgs,
 	Run:  runMCP,
 }
@@ -98,7 +98,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&streamOutput, "stream", "s", false, "Enable streaming output for text results")
 	rootCmd.PersistentFlags().StringVarP(&yamlParams, "yaml", "y", "", "YAML parameters (inline)")
 	rootCmd.PersistentFlags().StringVarP(&yamlFile, "file", "f", "", "YAML file with parameters (like kubectl apply -f)")
-	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "json", "Output format (json|yaml|text)")
+	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "pretty", "Output format (pretty|compact|yaml)")
 	rootCmd.AddCommand(interactiveCmd)
 }
 
@@ -111,10 +111,10 @@ func main() {
 func runMCP(cmd *cobra.Command, args []string) {
 	// Validate output format
 	switch outputFormat {
-	case outputFormatJSON, outputFormatYAML, outputFormatText:
+	case outputFormatPretty, outputFormatCompact, outputFormatYAML:
 		// valid
 	default:
-		fmt.Fprintf(os.Stderr, "invalid output format %q: must be json, yaml, or text\n", outputFormat)
+		fmt.Fprintf(os.Stderr, "invalid output format %q: must be pretty, compact, or yaml\n", outputFormat)
 		os.Exit(1)
 	}
 
@@ -585,7 +585,7 @@ func printOutput(v any) {
 	switch outputFormat {
 	case outputFormatYAML:
 		PrintYAML(v)
-	case outputFormatText:
+	case outputFormatCompact:
 		PrintText(v)
 	default:
 		PrintJSON(v)

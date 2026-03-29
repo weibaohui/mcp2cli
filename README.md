@@ -166,21 +166,21 @@ cat params.yaml | mcp server tool
 Control output format with `--output` / `-o`:
 
 ```bash
-# JSON (default, human-readable with indentation)
+# Pretty JSON (default, human-readable with indentation)
 mcp server tool
 
 # YAML output
 mcp --output yaml server tool
 
-# Text output (compact JSON, good for piping)
-mcp -o text server tool
+# Compact JSON (no indentation, good for piping)
+mcp -o compact server tool
 ```
 
 | Format | Description | Use Case |
 |--------|-------------|----------|
-| `json` | Pretty-printed JSON | Default, debugging |
+| `pretty` | Pretty-printed JSON (default) | Default, debugging |
+| `compact` | Compact JSON (no indentation) | Piping, scripts |
 | `yaml` | YAML format | Config files, readability |
-| `text` | Compact JSON | Piping, scripts |
 
 ## Installation
 
@@ -217,7 +217,7 @@ ren mcp2cli-windows-amd64.exe mcp.exe
 
 | Flag | Short | Description | Default |
 |------|-------|-------------|---------|
-| `--output` | `-o` | Output format (json\|yaml\|text) | `json` |
+| `--output` | `-o` | Output format (pretty\|compact\|yaml) | `pretty` |
 | `--yaml` | `-y` | YAML parameters (inline) | |
 | `--file` | `-f` | YAML file with parameters | |
 | `--stream` | `-s` | Enable streaming output | `false` |

@@ -407,14 +407,14 @@ Global flag `--output` / `-o` controls output format:
 
 | Format | Description |
 |--------|-------------|
-| `json` | JSON output (default) |
+| `pretty` | Pretty-printed JSON (default) |
+| `compact` | Compact JSON (no indentation) |
 | `yaml` | YAML output |
-| `text` | Plain text (JSON without indentation) |
 
 Examples:
 ```bash
 mcp --output yaml openDeepWiki list_repositories
-mcp -o text openDeepWiki list_repositories
+mcp -o compact openDeepWiki list_repositories
 ```
 
 ## 7. Unified Output Format

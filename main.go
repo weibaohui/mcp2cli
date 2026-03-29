@@ -20,6 +20,8 @@ import (
 const version = "v0.3.0"
 
 var streamOutput bool
+var yamlParams string
+var yamlFile string
 
 var rootCmd = &cobra.Command{
 	Use:   "mcp",
@@ -48,7 +50,16 @@ Usage examples:
   mcp openDeepWiki list_repositories limit=3
 
   # Call a tool with streaming output
-  mcp --stream openDeepWiki list_repositories limit=3`,
+  mcp --stream openDeepWiki list_repositories limit=3
+
+  # Call with YAML parameters (inline)
+  mcp openDeepWiki list_repositories --yaml 'limit: 3 repoOwner: github'
+
+  # Call with YAML from file (like kubectl apply -f)
+  mcp openDeepWiki create_issue -f issue.yaml
+
+  # Pipe YAML to stdin
+  cat issue.yaml | mcp openDeepWiki create_issue`,
 	Args: cobra.ArbitraryArgs,
 	Run:  runMCP,
 }
@@ -75,6 +86,8 @@ Examples:
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&streamOutput, "stream", "s", false, "Enable streaming output for text results")
+	rootCmd.PersistentFlags().StringVarP(&yamlParams, "yaml", "y", "", "YAML parameters (inline)")
+	rootCmd.PersistentFlags().StringVarP(&yamlFile, "file", "f", "", "YAML file with parameters (like kubectl apply -f)")
 	rootCmd.AddCommand(interactiveCmd)
 }
 
@@ -96,15 +109,20 @@ func runMCP(cmd *cobra.Command, args []string) {
 
 	dispatcher := mcp.NewDispatcher(config, loadedPaths)
 
-	// Route based on argument count
-	switch len(args) {
-	case 0:
+	// Check if YAML input mode is active
+	hasYAMLInput := yamlParams != "" || yamlFile != "" || (mcp.IsPipedInput() && len(args) <= 2)
+
+	// Route based on argument count and YAML input mode
+	switch {
+	case len(args) == 0:
 		runMCPList(ctx, dispatcher)
-	case 1:
+	case len(args) == 1:
 		runMCPServerInfo(ctx, dispatcher, args[0])
-	case 2:
+	case len(args) == 2 && !hasYAMLInput:
+		// Only show tool info if no YAML input (user might want to see params)
 		runMCPInfo(ctx, dispatcher, args[0], args[1])
 	default:
+		// 3+ args, or 2 args with YAML input -> call mode
 		runMCPCall(ctx, dispatcher, args[0], args[1], args[2:])
 	}
 }
@@ -331,10 +349,35 @@ func runMCPInfo(ctx context.Context, d *mcp.Dispatcher, serverName, toolName str
 }
 
 func runMCPCall(ctx context.Context, d *mcp.Dispatcher, serverName, toolName string, kvArgs []string) error {
-	// Parse key=value arguments
-	params, err := mcp.ParseKVArgs(kvArgs)
-	if err != nil {
-		return err
+	var params map[string]any
+	var err error
+
+	// Priority: -f > --yaml > stdin pipe > key=value
+
+	// 1. File input (-f)
+	if yamlFile != "" {
+		params, err = mcp.ReadYAMLFile(yamlFile)
+		if err != nil {
+			return err
+		}
+	} else if yamlParams != "" {
+		// 2. Inline YAML (--yaml / -y)
+		params, err = mcp.ParseYAML(yamlParams)
+		if err != nil {
+			return err
+		}
+	} else if mcp.IsPipedInput() && len(kvArgs) == 0 {
+		// 3. Stdin pipe (only if no positional args)
+		params, err = mcp.ReadStdinYAML()
+		if err != nil {
+			return err
+		}
+	} else {
+		// 4. Fall back to key=value parsing
+		params, err = mcp.ParseKVArgs(kvArgs)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Call tool

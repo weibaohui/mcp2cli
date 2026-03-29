@@ -2,8 +2,12 @@ package mcp
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // FormatInputSchema converts JSON Schema to human-readable format
@@ -233,4 +237,60 @@ func convertValue(valStr, typeHint string) (any, error) {
 	default:
 		return valStr, nil
 	}
+}
+
+// ParseYAML parses a YAML string and returns a map[string]any
+func ParseYAML(yamlStr string) (map[string]any, error) {
+	if strings.TrimSpace(yamlStr) == "" {
+		return nil, NewMCPError(ErrCodeParamInvalid, "empty YAML input")
+	}
+
+	var result map[string]any
+	if err := yaml.Unmarshal([]byte(yamlStr), &result); err != nil {
+		return nil, NewMCPError(ErrCodeParamInvalid, fmt.Sprintf("invalid YAML: %v", err))
+	}
+
+	if result == nil {
+		return nil, NewMCPError(ErrCodeParamInvalid, "empty YAML input")
+	}
+
+	return result, nil
+}
+
+// ReadYAMLFile reads and parses a YAML file
+func ReadYAMLFile(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, NewMCPError(ErrCodeParamInvalid, fmt.Sprintf("cannot read YAML file %q: %v", path, err))
+	}
+
+	return ParseYAML(string(data))
+}
+
+// IsPipedInput checks if stdin is a pipe (piped input)
+func IsPipedInput() bool {
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+
+	// Check if stdin is a pipe (mode char device + named pipe)
+	// ModeCharDevice = 0x2000 for Windows, not relevant for Unix
+	// ModeNamedPipe = 0x4000 for named pipe
+	mode := stat.Mode()
+	return (mode & os.ModeNamedPipe) != 0
+}
+
+// ReadStdinYAML reads YAML from stdin and returns a map
+func ReadStdinYAML() (map[string]any, error) {
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, NewMCPError(ErrCodeParamInvalid, fmt.Sprintf("failed to read stdin: %v", err))
+	}
+
+	if len(data) == 0 {
+		return nil, NewMCPError(ErrCodeParamInvalid, "empty stdin input")
+	}
+
+	return ParseYAML(string(data))
 }

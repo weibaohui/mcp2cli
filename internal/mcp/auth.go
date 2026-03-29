@@ -184,8 +184,8 @@ func exchangeCode(config *OAuthConfig, code, codeVerifier, redirectURI string) (
 
 	var tokenResp struct {
 		AccessToken  string `json:"access_token"`
-		TokenType   string `json:"token_type"`
-		ExpiresIn   int    `json:"expires_in"`
+		TokenType    string `json:"token_type"`
+		ExpiresIn    int    `json:"expires_in"`
 		RefreshToken string `json:"refresh_token"`
 	}
 

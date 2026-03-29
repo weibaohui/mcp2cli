@@ -18,7 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const version = "v0.3.0"
+const version = "v0.4.0"
 
 var streamOutput bool
 var yamlParams string

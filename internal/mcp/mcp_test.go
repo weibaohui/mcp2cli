@@ -949,3 +949,130 @@ func TestReadStdinYAML(t *testing.T) {
 		t.Errorf("expected 25, got %v", age)
 	}
 }
+
+// Output format tests
+
+func TestParseYAML_variousFormats(t *testing.T) {
+	stringTests := []struct {
+		name    string
+		yaml    string
+		wantKey string
+		wantVal any
+	}{
+		{"string value", "name: test", "name", "test"},
+		{"number value", "count: 42", "count", 42},
+		{"float value", "price: 19.99", "price", 19.99},
+		{"boolean true", "enabled: true", "enabled", true},
+		{"boolean false", "disabled: false", "disabled", false},
+	}
+
+	for _, tt := range stringTests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ParseYAML(tt.yaml)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result[tt.wantKey] != tt.wantVal {
+				t.Errorf("got %v, want %v", result[tt.wantKey], tt.wantVal)
+			}
+		})
+	}
+
+	// Test array separately (slices can't be compared with ==)
+	t.Run("array value", func(t *testing.T) {
+		result, err := ParseYAML("items:\n  - a\n  - b\n  - c")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		arr, ok := result["items"].([]any)
+		if !ok {
+			t.Fatalf("expected array, got %T", result["items"])
+		}
+		if len(arr) != 3 {
+			t.Errorf("expected 3 items, got %d", len(arr))
+		}
+		if arr[0] != "a" || arr[1] != "b" || arr[2] != "c" {
+			t.Errorf("unexpected array content: %v", arr)
+		}
+	})
+
+	// Test nested object separately
+	t.Run("nested object", func(t *testing.T) {
+		result, err := ParseYAML("config:\n  debug: true\n  level: 5")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		cfg, ok := result["config"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected map, got %T", result["config"])
+		}
+		if cfg["debug"] != true || cfg["level"] != 5 {
+			t.Errorf("unexpected config: %v", cfg)
+		}
+	})
+}
+
+func TestParseYAML_mixedContent(t *testing.T) {
+	yamlStr := `# Comment line
+name: mixed-test
+tags:
+  - yaml
+  - input
+config:
+  debug: true
+  timeout: 30
+emptyArray: []
+emptyObj: {}
+`
+	result, err := ParseYAML(yamlStr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if result["name"] != "mixed-test" {
+		t.Errorf("expected 'mixed-test', got %v", result["name"])
+	}
+
+	tags, ok := result["tags"].([]any)
+	if !ok {
+		t.Fatalf("expected tags to be array")
+	}
+	if len(tags) != 2 {
+		t.Errorf("expected 2 tags, got %d", len(tags))
+	}
+
+	config, ok := result["config"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected config to be map")
+	}
+	if config["debug"] != true {
+		t.Errorf("expected debug=true")
+	}
+}
+
+func TestParseYAML_quotedStrings(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		key  string
+		want string
+	}{
+		{"double quotes", `s1: "hello"`, "s1", "hello"},
+		{"single quotes", `s2: 'world'`, "s2", "world"},
+		{"mixed quotes", `s3: "it's cool"`, "s3", "it's cool"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ParseYAML(tt.yaml)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			val := result[tt.key]
+			if val != tt.want {
+				t.Errorf("got %v, want %v", val, tt.want)
+			}
+		})
+	}
+}

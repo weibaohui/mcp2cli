@@ -570,8 +570,8 @@ func PrintYAML(v any) {
 	enc.Close()
 }
 
-// PrintText prints text content to stdout (compact JSON)
-func PrintText(v any) {
+// PrintCompactJSON prints compact JSON to stdout (no indentation)
+func PrintCompactJSON(v any) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to marshal: %v\n", err)
@@ -586,7 +586,7 @@ func printOutput(v any) {
 	case outputFormatYAML:
 		PrintYAML(v)
 	case outputFormatCompact:
-		PrintText(v)
+		PrintCompactJSON(v)
 	default:
 		PrintJSON(v)
 	}

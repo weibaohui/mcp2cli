@@ -369,9 +369,9 @@ Usage examples:
   # Pipe YAML to stdin
   cat issue.yaml | mcp openDeepWiki create_issue
 
-  # Output in different formats (default: json)
+  # Output in different formats (default: pretty)
   mcp --output yaml openDeepWiki list_repositories
-  mcp --output text openDeepWiki list_repositories
+  mcp --output compact openDeepWiki list_repositories
 ```
 
 ## 6. Operation Details

@@ -1048,6 +1048,33 @@ emptyObj: {}
 	if config["debug"] != true {
 		t.Errorf("expected debug=true")
 	}
+
+	// timeout
+	timeout := config["timeout"]
+	timeoutNum := 0.0
+	switch v := timeout.(type) {
+	case int:
+		timeoutNum = float64(v)
+	case float64:
+		timeoutNum = v
+	default:
+		t.Fatalf("expected numeric timeout, got %T", timeout)
+	}
+	if timeoutNum != 30 {
+		t.Errorf("expected timeout=30, got %v", timeoutNum)
+	}
+
+	// emptyArray
+	emptyArr, ok := result["emptyArray"].([]any)
+	if !ok || len(emptyArr) != 0 {
+		t.Errorf("expected emptyArray to be empty array, got %T %v", result["emptyArray"], result["emptyArray"])
+	}
+
+	// emptyObj
+	emptyObj, ok := result["emptyObj"].(map[string]any)
+	if !ok || len(emptyObj) != 0 {
+		t.Errorf("expected emptyObj to be empty object, got %T %v", result["emptyObj"], result["emptyObj"])
+	}
 }
 
 func TestParseYAML_quotedStrings(t *testing.T) {

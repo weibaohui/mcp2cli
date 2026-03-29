@@ -109,6 +109,15 @@ func main() {
 }
 
 func runMCP(cmd *cobra.Command, args []string) {
+	// Validate output format
+	switch outputFormat {
+	case outputFormatJSON, outputFormatYAML, outputFormatText:
+		// valid
+	default:
+		fmt.Fprintf(os.Stderr, "invalid output format %q: must be json, yaml, or text\n", outputFormat)
+		os.Exit(1)
+	}
+
 	ctx := context.Background()
 
 	// Load config
@@ -558,11 +567,12 @@ func PrintYAML(v any) {
 		fmt.Fprintf(os.Stderr, "failed to encode YAML: %v\n", err)
 		os.Exit(1)
 	}
+	enc.Close()
 }
 
-// PrintText prints text content to stdout (simplified output)
+// PrintText prints text content to stdout (compact JSON)
 func PrintText(v any) {
-	data, err := json.MarshalIndent(v, "", "  ")
+	data, err := json.Marshal(v)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to marshal: %v\n", err)
 		os.Exit(1)
